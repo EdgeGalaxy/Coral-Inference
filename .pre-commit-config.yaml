@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # 检查YAML格式正确性
+      - id: check-yaml
+        stages: [commit]
+
+      # 防止提交巨型文件
+      - id: check-added-large-files
+        args: ['--maxkb=10240']
+
+      # 修剪尾部空格
+      - id: trailing-whitespace
+        stages: [commit]
+
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      # python代码遵循pep8风格
+      - id: black
+        stages: [commit]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      # pep8语法校验
+      - id: flake8
+        stages: [commit]
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.20.0
+    hooks:
+      # 针对commit内容进行校验
+      - id: commitizen
+        stages: [commit-msg]
