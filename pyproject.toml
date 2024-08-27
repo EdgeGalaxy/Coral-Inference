@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coral-inference"
-version = "0.1.0"
+version = "0"
 description = ""
 authors = ["zhaokefei <zhaokefei@tezign.com>"]
 readme = "README.md"
@@ -8,26 +8,37 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "<3.12,>=3.8"
 scipy = "1.10.0"
-inference="^0.16.2"
-inference-gpu = {version = "^0.16.2", optional = true}
-rknn-toolkit-lite2 = {version = "^1.6.0", optional = true, platform = "aarch64", source = "loopeai"}
+inference = {extras = ["http"], version = "^0.16.2"}
 
 
-[tool.poetry.extras]
-gpu = ["inference-gpu"]
-npu = ["rknn-toolkit-lite2"]
+[tool.poetry.group.npu]
+optional = true
+
+[tool.poetry.group.npu.dependencies]
+rknn-toolkit-lite2 = {version = "^1.6.0", source = "loopeai"}
+
+
+[tool.poetry.group.gpu]
+optional = true
+
+[tool.poetry.group.gpu.dependencies]
+inference-gpu = {extras = ["http"], version = "^0.16.2"}
+
 
 [[tool.poetry.source]]
 name = "tsinghua"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-priority = "default"
+priority = "primary"
 
 [[tool.poetry.source]]
 name = "loopeai"
 url = "http://pypi.loopeai.com/simple"
 priority = "supplemental"
 
+[tool.poetry-version-plugin]
+source = "init"
+
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core", "poetry-version-plugin"]
 build-backend = "poetry.core.masonry.api"

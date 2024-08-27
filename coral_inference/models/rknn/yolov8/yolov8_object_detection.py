@@ -38,7 +38,6 @@ class YOLOv8RknnObjectDetection(ObjectDetectionBaseRknnCoralInferenceModel):
         Returns:
             Tuple[np.ndarray]: NumPy array representing the predictions, including boxes, confidence scores, and class confidence scores.
         """
-        # img_in = img_in if img_ else img_in[np.newaxis, :, :, :]
         predictions = self.rknn_session.inference(inputs=[img_in])[0]
         predictions = (
             np.squeeze(predictions, axis=-1)
