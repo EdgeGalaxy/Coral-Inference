@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "<3.12,>=3.8"
 scipy = "1.10.0"
-inference = {extras = ["http"], version = "^0.16.2"}
+inference = {version = "*", extras = ["http"]}
 
 
 [tool.poetry.group.npu]
@@ -22,7 +22,7 @@ rknn-toolkit-lite2 = {version = "^1.6.0", source = "loopeai"}
 optional = true
 
 [tool.poetry.group.gpu.dependencies]
-inference-gpu = {extras = ["http"], version = "^0.16.2"}
+inference-gpu = {extras = ["http"], version = "*"}
 
 
 [[tool.poetry.source]]

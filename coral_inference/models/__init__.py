@@ -1,4 +1,3 @@
-from typing import Callable, Dict
 import inference.models.utils as models_utils
 
 from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
