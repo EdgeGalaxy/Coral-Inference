@@ -1,15 +1,29 @@
+from typing import Any
+
+import numpy as np
 from inference.core.exceptions import ModelArtefactError
 
 
-def rknnruntime_session(model_fp: str, device_id: int):
-    try:
-        from rknnlite.api import RKNNLite as RKNN
-    except ImportError:
-        raise ImportError("Please install rknnlite first!")
+class RknnInferenceSession:
 
-    rknn_session = RKNN(verbose=False)
-    rknn_session.load_rknn(model_fp)
-    ret = rknn_session.init_runtime(core_mask=int(device_id))
-    if ret != 0:
-        raise ModelArtefactError(f"Unable to initialize RKNN session. Cause: {ret}")
-    return rknn_session
+    def __init__(self, model_fp: str, inputs: Any, device_id: int = 0):
+        try:
+            from rknnlite.api import RKNNLite as RKNN
+        except ImportError:
+            raise ImportError("Please install rknnlite first!")
+
+        self.input_name = inputs.name
+        self.input_shape = inputs.shape
+
+        self.rknn_session = RKNN(verbose=False)
+        self.rknn_session.load_rknn(model_fp)
+        ret = self.rknn_session.init_runtime(core_mask=int(device_id))
+        if ret != 0:
+            raise ModelArtefactError(f"Unable to initialize RKNN session. Cause: {ret}")
+
+    def run(self, output_names, input_feed: dict, run_options=None) -> np.ndarray:
+        outputs = self.rknn_session.inference(inputs=input_feed[self.input_name])[0]
+        predictions = (
+            np.squeeze(outputs, axis=-1) if len(outputs.shape) > 3 else outputs
+        )
+        return predictions

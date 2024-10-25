@@ -1,10 +1,5 @@
-from collections import defaultdict
 import os
-from typing import List
 
-import inference.core.workflows.core_steps.loader as workflow_block_loader
-
-from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
 from coral_inference.plugins.blocks import load_custom_blocks
 from coral_inference.plugins.kinds import load_custom_kinds
 
