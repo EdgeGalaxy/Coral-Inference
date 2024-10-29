@@ -1,0 +1,49 @@
+FROM python:3.9 as base
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt update -y && apt install -y \
+    libxext6 \
+    libopencv-dev \
+    uvicorn \
+    python3-pip \
+    git \
+    libgdal-dev \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir poetry
+
+WORKDIR /tmp
+
+COPY pyproject.toml poetry.lock /tmp/
+
+RUN poetry config virtualenvs.create false && \
+    poetry install -only-root && \
+    rm -rf /root/.local && \
+    rm -rf /root/.cache/pypoetry/artifacts && \
+    rm -rf /root/.cache/pypoetry/cache
+
+WORKDIR /workspace
+
+ADD docker/config/* /workspace
+
+ENV VERSION_CHECK_MODE=continuous
+ENV PROJECT=roboflow-platform
+ENV NUM_WORKERS=1
+ENV HOST=0.0.0.0
+ENV PORT=9001
+ENV WORKFLOWS_STEP_EXECUTION_MODE=local
+ENV WORKFLOWS_MAX_CONCURRENT_STEPS=4
+ENV API_LOGGING_ENABLED=True
+ENV CORE_MODEL_SAM2_ENABLED=False
+ENV CORE_MODEL_OWLV2_ENABLED=False
+ENV ENABLE_STREAM_API=True
+ENV ENABLE_WORKFLOWS_PROFILING=True
+ENV ENABLE_PROMETHEUS=True
+ENV METRICS_ENABLED=False
+
+ENV CURRENT_INFERENCE_PLATFORM=onnx
+
+ENTRYPOINT uvicorn web:app --workers $NUM_WORKERS --host $HOST --port $PORT

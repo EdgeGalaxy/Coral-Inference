@@ -3,12 +3,14 @@ from functools import partialmethod
 import inference.core.models.roboflow as roboflow
 from inference.core.logger import logger
 
-from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
+from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
 
 
-if CURRENT_INFERENCE_PLATFORM == "rknn":
-    print(f"CURRENT_INFERENCE_PLATFORM is {CURRENT_INFERENCE_PLATFORM}")
+runtime_platform = get_runtime_platform()
+
+
+if runtime_platform == "rknn":
     roboflow.OnnxRoboflowInferenceModel.initialize_model = partialmethod(
         rknn_base.initialize_model,
         origin_method=roboflow.OnnxRoboflowInferenceModel.initialize_model,
@@ -30,9 +32,9 @@ if CURRENT_INFERENCE_PLATFORM == "rknn":
     )
 
     logger.info(
-        f"CURRENT_INFERENCE_PLATFORM is {CURRENT_INFERENCE_PLATFORM}, useing RknnCoralInferenceModel replace OnnxRoboflowInferenceModel"
+        f"runtime_platform is {runtime_platform}, useing RknnCoralInferenceModel replace OnnxRoboflowInferenceModel"
     )
 else:
     logger.info(
-        f"CURRENT_INFERENCE_PLATFORM is {CURRENT_INFERENCE_PLATFORM}, useing default OnnxRoboflowInferenceModel"
+        f"runtime_platform is {runtime_platform}, useing default OnnxRoboflowInferenceModel"
     )

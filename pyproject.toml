@@ -9,6 +9,7 @@ readme = "README.md"
 python = "<3.12,>=3.8"
 scipy = "1.10.0"
 inference = {version = "*", extras = ["http"]}
+loguru = "^0.7.2"
 
 
 [tool.poetry.group.npu]

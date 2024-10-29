@@ -1,7 +1,12 @@
+import os
+import subprocess
 from typing import Any
 
 import numpy as np
 from inference.core.exceptions import ModelArtefactError
+from coral_inference.core.log import logger
+
+from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
 
 
 class RknnInferenceSession:
@@ -27,3 +32,22 @@ class RknnInferenceSession:
             np.squeeze(outputs, axis=-1) if len(outputs.shape) > 3 else outputs
         )
         return predictions
+
+
+def get_runtime_platform():
+    """
+    获取当前的推理平台
+    """
+    manual_platform = CURRENT_INFERENCE_PLATFORM
+    if manual_platform and manual_platform.lower() in ["rknn", "onnx"]:
+        logger.info(
+            f"CURRENT_INFERENCE_PLATFORM is {manual_platform}, using {manual_platform} runtime"
+        )
+        return manual_platform
+    try:
+        subprocess.check_output("rknn-server")
+        logger.info("rknn-server is installed, using rknn runtime")
+        return "rknn"
+    except:
+        logger.info("rknn-server is not installed, using onnx runtime")
+        return "onnx"

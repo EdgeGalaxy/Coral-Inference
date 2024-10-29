@@ -4,7 +4,6 @@ from typing import Any, Tuple, Union, List, Callable
 import numpy as np
 
 from inference.core.cache import cache
-from inference.core.logger import logger
 from inference.core.exceptions import ModelArtefactError
 from inference.core.roboflow_api import (
     ModelEndpointType,
@@ -15,6 +14,7 @@ from inference.core.cache.model_artifacts import save_bytes_in_cache
 from inference.core.models.roboflow import OnnxRoboflowInferenceModel
 from inference.core.entities.requests.inference import InferenceRequestImage
 
+from coral_inference.core.log import logger
 from coral_inference.core.models.utils import RknnInferenceSession
 
 
@@ -24,7 +24,6 @@ def rknn_weights_file(self: OnnxRoboflowInferenceModel) -> str:
 
 def initialize_model(self: OnnxRoboflowInferenceModel, origin_method: Callable) -> None:
     """Initializes the Rknn model, setting up the inference session and other necessary properties."""
-    print(f"initialize_rknn_model {self.rknn_weights_file}")
 
     # Initialize the base onnx model
     origin_method(self)

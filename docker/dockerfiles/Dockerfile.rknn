@@ -1,0 +1,67 @@
+FROM ubuntu:22.04 AS source
+
+ARG RKNN_VERSION=1.6.0
+
+RUN apt update && apt install -y git && \
+    git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
+
+
+FROM ubuntu:22.04 AS rknn-runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
+COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
+COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /
+
+RUN ldconfig
+
+# Install the python lite version of the toolkit
+RUN apt update -y && apt install -y \
+    libxext6 \
+    libopencv-dev \
+    uvicorn \
+    python3-pip \
+    git \
+    libgdal-dev \
+    cmake && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir poetry
+
+WORKDIR /tmp
+
+COPY pyproject.toml poetry.lock /tmp/
+
+RUN poetry config virtualenvs.create false && \
+    poetry install -only-root && \
+    rm -rf /root/.local && \
+    rm -rf /root/.cache/pypoetry/artifacts && \
+    rm -rf /root/.cache/pypoetry/cache
+
+RUN pip install --no-cache-dir /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl && \
+    rm /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
+
+WORKDIR /workspace
+
+ADD docker/config/* /workspace
+
+ENV VERSION_CHECK_MODE=continuous
+ENV PROJECT=roboflow-platform
+ENV NUM_WORKERS=1
+ENV HOST=0.0.0.0
+ENV PORT=9001
+ENV WORKFLOWS_STEP_EXECUTION_MODE=local
+ENV WORKFLOWS_MAX_CONCURRENT_STEPS=4
+ENV API_LOGGING_ENABLED=True
+ENV CORE_MODEL_SAM2_ENABLED=False
+ENV CORE_MODEL_OWLV2_ENABLED=False
+ENV ENABLE_STREAM_API=True
+ENV ENABLE_WORKFLOWS_PROFILING=True
+ENV ENABLE_PROMETHEUS=True
+
+ENV CURRENT_INFERENCE_PLATFORM=rknn
+
+ENTRYPOINT uvicorn web:app --workers $NUM_WORKERS --host $HOST --port $PORT
