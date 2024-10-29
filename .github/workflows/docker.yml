@@ -41,7 +41,7 @@ jobs:
         uses: depot/build-push-action@v1
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest,roboflow/coral-inference-server-cpu:${{env.VERSION}}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:${{env.VERSION}}
           platforms: linux/amd64,linux/arm64
           file: ./docker/dockerfiles/Dockerfile.cpu
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest
@@ -71,7 +71,7 @@ jobs:
         uses: depot/build-push-action@v1
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest,roboflow/coral-inference-server-gpu:${{env.VERSION}}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:${{env.VERSION}}
           platforms: linux/amd64,linux/arm64
           file: ./docker/dockerfiles/Dockerfile.gpu
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest
@@ -101,7 +101,7 @@ jobs:
         uses: depot/build-push-action@v1
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}},roboflow/coral-inference-server-rknn:${{env.VERSION}}-rknn${{env.RKNN_VERSION}}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}},${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:${{env.VERSION}}-rknn${{env.RKNN_VERSION}}
           platforms: linux/amd64,linux/arm64
           file: ./docker/dockerfiles/Dockerfile.rknn
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}}
