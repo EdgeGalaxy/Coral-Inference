@@ -104,7 +104,5 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}},roboflow/coral-inference-server-rknn:${{env.VERSION}}-rknn${{env.RKNN_VERSION}}
           platforms: linux/amd64,linux/arm64
           file: ./docker/dockerfiles/Dockerfile.rknn
-          build-args:
-            RKNN_VERSION: ${{env.RKNN_VERSION}}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}}
           cache-to: type=inline
