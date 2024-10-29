@@ -1,0 +1,27 @@
+name: Build and Push Rknn Containers
+
+on:
+  release:
+    types: [created]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_push:
+        type: boolean
+        description: "Do you want to push image after build?"
+        default: false
+
+env:
+  RKNN_VERSION: "1.6.0"
+
+jobs:
+  docker-rknn:
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-type: rknn
+      dockerfile-path: ./docker/dockerfiles/Dockerfile.rknn
+      push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

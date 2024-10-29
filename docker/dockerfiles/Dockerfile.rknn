@@ -10,6 +10,8 @@ FROM ubuntu:22.04 AS rknn-runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+ENV RKNN_VERSION=1.6.0
+
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
 COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /
