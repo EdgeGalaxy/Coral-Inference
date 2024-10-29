@@ -2,32 +2,33 @@ FROM python:3.9 as base
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt update -y && apt install -y \
-    libxext6 \
-    libopencv-dev \
-    uvicorn \
-    python3-pip \
-    git \
-    libgdal-dev \
-    cmake \
+RUN apt-get update -y \
+    && apt-get install -y \
+        libxext6 \
+        libopencv-dev \
+        uvicorn \
+        python3-pip \
+        git \
+        libgdal-dev \
+        cmake \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir poetry
+RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
+    && poetry config virtualenvs.create false
 
 WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry config virtualenvs.create false && \
-    poetry install -only-root && \
+RUN poetry install --only-root && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache
 
 WORKDIR /workspace
 
-ADD docker/config/* /workspace
+COPY docker/config/* /workspace
 
 ENV VERSION_CHECK_MODE=continuous
 ENV PROJECT=roboflow-platform

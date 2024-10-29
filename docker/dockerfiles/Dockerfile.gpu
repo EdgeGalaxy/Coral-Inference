@@ -14,22 +14,21 @@ RUN rm -rf /var/lib/apt/lists/* && apt-get clean && apt-get update -y && DEBIAN_
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir poetry
+RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
+    && poetry config virtualenvs.create false
 
 WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry config virtualenvs.create false && \
-    poetry install --with gpu && \
+RUN poetry install --with gpu && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache
 
 WORKDIR /workspace
 
-ADD docker/config/* /workspace
+COPY docker/config/* /workspace
 
 ENV VERSION_CHECK_MODE=continuous
 ENV PROJECT=roboflow-platform

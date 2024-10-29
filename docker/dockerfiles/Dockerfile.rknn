@@ -1,6 +1,6 @@
 FROM ubuntu:22.04 AS source
 
-ARG RKNN_VERSION=1.6.0
+ENV RKNN_VERSION=1.6.0
 
 RUN apt update && apt install -y git && \
     git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
@@ -28,15 +28,14 @@ RUN apt update -y && apt install -y \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir poetry
+RUN pip install --no-cache-dir -U pip setuptools wheel poetry && \
+    poetry config virtualenvs.create false
 
 WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry config virtualenvs.create false && \
-    poetry install -only-root && \
+RUN poetry install --only-root && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache
@@ -46,7 +45,7 @@ RUN pip install --no-cache-dir /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-l
 
 WORKDIR /workspace
 
-ADD docker/config/* /workspace
+COPY docker/config/* /workspace
 
 ENV VERSION_CHECK_MODE=continuous
 ENV PROJECT=roboflow-platform
