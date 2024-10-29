@@ -33,12 +33,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: 🛎️ Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Read version from file
         run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Set up Depot CLI
-        uses: depot/setup-action@v1
       - name: Build and Push
-        uses: depot/build-push-action@v1
+        uses: docker/build-push-action@v5
         with:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:${{env.VERSION}}
@@ -63,12 +65,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: 🛎️ Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Read version from file
         run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Set up Depot CLI
-        uses: depot/setup-action@v1
       - name: Build and Push
-        uses: depot/build-push-action@v1
+        uses: docker/build-push-action@v5
         with:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:${{env.VERSION}}
@@ -93,12 +97,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: 🛎️ Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Read version from file
         run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Set up Depot CLI
-        uses: depot/setup-action@v1
       - name: Build and Push
-        uses: depot/build-push-action@v1
+        uses: docker/build-push-action@v5
         with:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}},${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:${{env.VERSION}}-rknn${{env.RKNN_VERSION}}
