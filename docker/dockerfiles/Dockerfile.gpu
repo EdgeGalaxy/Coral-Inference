@@ -21,7 +21,7 @@ WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry install --with gpu && \
+RUN poetry install --with gpu --directory=/tmp && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache

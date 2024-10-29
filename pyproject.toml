@@ -27,11 +27,6 @@ inference-gpu = {extras = ["http"], version = "*"}
 
 
 [[tool.poetry.source]]
-name = "tsinghua"
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-priority = "primary"
-
-[[tool.poetry.source]]
 name = "loopeai"
 url = "http://pypi.loopeai.com/simple"
 priority = "supplemental"

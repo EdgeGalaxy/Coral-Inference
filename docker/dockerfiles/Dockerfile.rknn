@@ -38,13 +38,21 @@ WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry install --only-root && \
+RUN poetry install --only-root --directory=/tmp && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache
 
 RUN pip install --no-cache-dir /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl && \
     rm /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
+
+WORKDIR /build
+
+COPY . .
+
+RUN poetry build && \
+    pip install --no-cache-dir dist/*.whl && \
+    rm -rf /build
 
 WORKDIR /workspace
 

@@ -21,10 +21,18 @@ WORKDIR /tmp
 
 COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry install --only-root && \
+RUN poetry install --only-root --directory=/tmp && \
     rm -rf /root/.local && \
     rm -rf /root/.cache/pypoetry/artifacts && \
     rm -rf /root/.cache/pypoetry/cache
+
+WORKDIR /build
+
+COPY . .
+
+RUN poetry build && \
+    pip install --no-cache-dir dist/*.whl && \
+    rm -rf /build
 
 WORKDIR /workspace
 
