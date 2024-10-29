@@ -1,6 +1,7 @@
 FROM ubuntu:22.04 AS source
 
-ENV RKNN_VERSION=1.6.0
+ARG RKNN_VERSION=1.6.0
+ENV RKNN_VERSION=${RKNN_VERSION}
 
 RUN apt update && apt install -y git && \
     git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
@@ -9,8 +10,8 @@ RUN apt update && apt install -y git && \
 FROM ubuntu:22.04 AS rknn-runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
-
-ENV RKNN_VERSION=1.6.0
+ARG RKNN_VERSION=1.6.0
+ENV RKNN_VERSION=${RKNN_VERSION}
 
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/

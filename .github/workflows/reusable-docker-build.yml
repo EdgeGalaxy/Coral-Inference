@@ -61,7 +61,7 @@ jobs:
         with:
           push: ${{ inputs.push-image }}
           tags: ${{ steps.tags.outputs.TAGS }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           file: ${{ inputs.dockerfile-path }}
           cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
           cache-to: type=inline
