@@ -1,4 +1,4 @@
-name: Build and Push CPU Container
+name: Build and Push Containers
 
 on:
   release:
@@ -13,102 +13,35 @@ on:
         default: false
 
 env:
-  VERSION: "0.0.0" # Default version, will be overwritten
   RKNN_VERSION: "1.6.0"
 
 jobs:
   docker-cpu:
-    runs-on:
-      labels: ubuntu-latest
-    timeout-minutes: 120
-    permissions:
-      id-token: write
-      contents: read
-      packages: write
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Read version from file
-        run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:${{env.VERSION}}
-          platforms: linux/amd64,linux/arm64
-          file: ./docker/dockerfiles/Dockerfile.cpu
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-cpu:latest
-          cache-to: type=inline
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-type: cpu
+      dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
+      push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   docker-gpu:
-    runs-on:
-      labels: ubuntu-latest
-    timeout-minutes: 120
-    permissions:
-      id-token: write
-      contents: read
-      packages: write
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Read version from file
-        run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest,${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:${{env.VERSION}}
-          platforms: linux/amd64,linux/arm64
-          file: ./docker/dockerfiles/Dockerfile.gpu
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-gpu:latest
-          cache-to: type=inline
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-type: gpu
+      dockerfile-path: ./docker/dockerfiles/Dockerfile.gpu
+      push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   docker-rknn:
-    runs-on:
-      labels: ubuntu-latest
-    timeout-minutes: 120
-    permissions:
-      id-token: write
-      contents: read
-      packages: write
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Read version from file
-        run: echo "VERSION=$(DISABLE_VERSION_CHECK=true python version.py)" >> $GITHUB_ENV
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}},${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:${{env.VERSION}}-rknn${{env.RKNN_VERSION}}
-          platforms: linux/amd64,linux/arm64
-          file: ./docker/dockerfiles/Dockerfile.rknn
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}}
-          cache-to: type=inline
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-type: rknn
+      dockerfile-path: ./docker/dockerfiles/Dockerfile.rknn
+      push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
