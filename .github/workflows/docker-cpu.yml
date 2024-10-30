@@ -25,6 +25,7 @@ jobs:
     uses: ./.github/workflows/reusable-docker-build.yml
     with:
       image-type: cpu
+      cache-path: /tmp/.cpu-buildx-cache
       dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
     secrets:
