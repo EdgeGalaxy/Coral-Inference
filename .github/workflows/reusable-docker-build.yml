@@ -70,11 +70,11 @@ jobs:
           fi
 
       - name: Build and Push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           push: ${{ inputs.push-image }}
           tags: ${{ steps.tags.outputs.TAGS }}
           platforms: linux/arm64
           file: ${{ inputs.dockerfile-path }}
-          cache-from: ${{ inputs.build-args }}
-          cache-to: ${{ inputs.build-args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

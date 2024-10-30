@@ -27,9 +27,6 @@ jobs:
       image-type: cpu
       dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
-      build-args: |
-        --cache-from=type=gha
-        --cache-to=type=gha,mode=max
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
