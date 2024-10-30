@@ -26,7 +26,7 @@ jobs:
     uses: ./.github/workflows/reusable-docker-build.yml
     with:
       image-type: rknn
-      cache-path: /tmp/.rknn-buildx-cache
+      cache-image: ${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-rknn:latest-rknn${{env.RKNN_VERSION}}
       dockerfile-path: ./docker/dockerfiles/Dockerfile.rknn
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
     secrets:
