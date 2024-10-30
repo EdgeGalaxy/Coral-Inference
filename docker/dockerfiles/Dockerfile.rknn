@@ -30,6 +30,7 @@ RUN pip install --no-cache-dir -U pip setuptools wheel poetry && \
 
 WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
+RUN mkdir -p /tmp/coral_inference
 COPY coral_inference/* /tmp/coral_inference
 
 # Copy RKNN files from source stage
