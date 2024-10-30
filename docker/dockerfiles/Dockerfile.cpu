@@ -1,4 +1,5 @@
-FROM python:3.9 as base
+# First stage: Install all dependencies
+FROM python:3.9 as builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -18,41 +19,49 @@ RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
     && poetry config virtualenvs.create false
 
 WORKDIR /tmp
+COPY pyproject.toml poetry.lock ./
+COPY coral_inference/* /tmp/coral_inference
 
-COPY pyproject.toml poetry.lock /tmp/
+# Install all dependencies using poetry
+RUN poetry install \
+    && pip install --no-cache-dir uvicorn
 
-RUN poetry install --only-root --directory=/tmp && \
-    rm -rf /root/.local && \
-    rm -rf /root/.cache/pypoetry/artifacts && \
-    rm -rf /root/.cache/pypoetry/cache
+# Second stage: Runtime
+FROM python:3.9-slim as runtime
 
-WORKDIR /build
+ARG DEBIAN_FRONTEND=noninteractive
 
-COPY . .
+# Install only required runtime system libraries
+RUN apt-get update -y \
+    && apt-get install -y \
+        libxext6 \
+        libopencv-dev \
+        libgdal-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN poetry build && \
-    pip install --no-cache-dir dist/*.whl && \
-    rm -rf /build
+# Copy Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 WORKDIR /workspace
+COPY docker/config/* /workspace/
 
-COPY docker/config/* /workspace
-
-ENV VERSION_CHECK_MODE=continuous
-ENV PROJECT=roboflow-platform
-ENV NUM_WORKERS=1
-ENV HOST=0.0.0.0
-ENV PORT=9001
-ENV WORKFLOWS_STEP_EXECUTION_MODE=local
-ENV WORKFLOWS_MAX_CONCURRENT_STEPS=4
-ENV API_LOGGING_ENABLED=True
-ENV CORE_MODEL_SAM2_ENABLED=False
-ENV CORE_MODEL_OWLV2_ENABLED=False
-ENV ENABLE_STREAM_API=True
-ENV ENABLE_WORKFLOWS_PROFILING=True
-ENV ENABLE_PROMETHEUS=True
-ENV METRICS_ENABLED=False
-
-ENV CURRENT_INFERENCE_PLATFORM=onnx
+# Environment variables
+ENV VERSION_CHECK_MODE=continuous \
+    PROJECT=roboflow-platform \
+    NUM_WORKERS=1 \
+    HOST=0.0.0.0 \
+    PORT=9001 \
+    WORKFLOWS_STEP_EXECUTION_MODE=local \
+    WORKFLOWS_MAX_CONCURRENT_STEPS=4 \
+    API_LOGGING_ENABLED=True \
+    CORE_MODEL_SAM2_ENABLED=False \
+    CORE_MODEL_OWLV2_ENABLED=False \
+    ENABLE_STREAM_API=True \
+    ENABLE_WORKFLOWS_PROFILING=True \
+    ENABLE_PROMETHEUS=True \
+    METRICS_ENABLED=False \
+    CURRENT_INFERENCE_PLATFORM=onnx
 
 ENTRYPOINT uvicorn web:app --workers $NUM_WORKERS --host $HOST --port $PORT
