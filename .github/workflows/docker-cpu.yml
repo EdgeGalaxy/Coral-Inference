@@ -16,6 +16,10 @@ on:
         description: "Do you want to push image after build?"
         default: false
 
+env:
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_INLINE_CACHE: 1
+
 jobs:
   docker-cpu:
     uses: ./.github/workflows/reusable-docker-build.yml
@@ -23,6 +27,9 @@ jobs:
       image-type: cpu
       dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+      build-args: |
+        --cache-from type=gha
+        --cache-to type=gha,mode=max
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

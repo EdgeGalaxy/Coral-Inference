@@ -15,6 +15,11 @@ on:
         required: true
         type: boolean
         description: "Whether to push the image"
+      build-args:
+        type: string
+        description: 'Additional build arguments'
+        required: false
+        default: ''
     secrets:
       DOCKERHUB_USERNAME:
         required: true
@@ -45,6 +50,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Set image tags
         id: tags
         run: |
@@ -63,5 +76,5 @@ jobs:
           tags: ${{ steps.tags.outputs.TAGS }}
           platforms: linux/arm64
           file: ${{ inputs.dockerfile-path }}
-          cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
-          cache-to: type=inline
+          cache-from: ${{ inputs.build-args }}
+          cache-to: ${{ inputs.build-args }}
