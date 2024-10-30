@@ -20,12 +20,15 @@ RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
 
 WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
-RUN mkdir -p /tmp/coral_inference
-COPY coral_inference/* /tmp/coral_inference
 
 # Install all dependencies using poetry
 RUN poetry install \
     && pip install --no-cache-dir uvicorn
+
+RUN mkdir -p /tmp/coral_inference
+COPY coral_inference/* /tmp/coral_inference
+RUN poetry build && \
+    pip install --no-cache-dir dist/*.whl
 
 # Second stage: Runtime
 FROM python:3.9-slim as runtime

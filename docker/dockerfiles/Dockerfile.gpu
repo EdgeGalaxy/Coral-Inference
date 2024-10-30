@@ -20,11 +20,14 @@ RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
 
 WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
-RUN mkdir -p /tmp/coral_inference
-COPY coral_inference/* /tmp/coral_inference
 
 # Install all dependencies including GPU packages
 RUN poetry install --with gpu
+
+RUN mkdir -p /tmp/coral_inference
+COPY coral_inference/* /tmp/coral_inference
+RUN poetry build && \
+    pip install --no-cache-dir dist/*.whl
 
 # Stage 2: Runtime
 FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 as runtime

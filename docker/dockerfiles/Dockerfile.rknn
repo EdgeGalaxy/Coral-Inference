@@ -25,20 +25,24 @@ RUN apt update -y && apt install -y \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -U pip setuptools wheel poetry && \
+RUN pip install -U pip setuptools wheel poetry && \
     poetry config virtualenvs.create false
 
 WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
-RUN mkdir -p /tmp/coral_inference
-COPY coral_inference/* /tmp/coral_inference
+
 
 # Copy RKNN files from source stage
 COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /tmp/
 
 # Install all dependencies
 RUN poetry install && \
-    pip install --no-cache-dir /tmp/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
+    pip install /tmp/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
+
+RUN mkdir -p /tmp/coral_inference
+COPY coral_inference/* /tmp/coral_inference
+RUN poetry build && \
+    pip install dist/*.whl
 
 # Stage 3: Runtime
 FROM ubuntu:22.04 AS runtime
