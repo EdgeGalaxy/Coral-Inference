@@ -3,7 +3,6 @@ name = "coral-inference"
 version = "0"
 description = ""
 authors = ["zhaokefei <zhaokefei@tezign.com>"]
-readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "<3.12,>=3.8"
