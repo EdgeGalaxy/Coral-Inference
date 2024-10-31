@@ -16,10 +16,6 @@ on:
         description: "Do you want to push image after build?"
         default: false
 
-env:
-  DOCKER_BUILDKIT: 1
-  BUILDKIT_INLINE_CACHE: 1
-
 jobs:
   docker-cpu:
     uses: ./.github/workflows/reusable-docker-build.yml
