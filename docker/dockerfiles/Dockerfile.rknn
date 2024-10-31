@@ -70,7 +70,7 @@ COPY --from=builder /usr/local/bin/ /usr/local/bin/
 RUN ldconfig
 
 WORKDIR /workspace
-COPY docker/config/* /workspace/
+COPY docker/config /workspace/
 
 ENV VERSION_CHECK_MODE=continuous \
     PROJECT=roboflow-platform \
