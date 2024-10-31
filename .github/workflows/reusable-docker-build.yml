@@ -66,3 +66,6 @@ jobs:
           file: ${{ inputs.dockerfile-path }}
           cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
           cache-to: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }},mode=max
+          # 添加构建参数
+          build-args: |
+            RKNN_VERSION=${{env.RKNN_VERSION}}
