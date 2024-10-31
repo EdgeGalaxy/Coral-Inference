@@ -25,8 +25,7 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install \
     && pip install --no-cache-dir uvicorn
 
-RUN mkdir -p /tmp/coral_inference
-COPY coral_inference/* /tmp/coral_inference
+COPY coral_inference /tmp/coral_inference
 RUN poetry build && \
     pip install --no-cache-dir dist/*.whl
 
