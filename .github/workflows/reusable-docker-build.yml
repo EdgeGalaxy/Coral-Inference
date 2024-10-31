@@ -59,6 +59,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6
         with:
+          context: .
           push: ${{ inputs.push-image }}
           tags: ${{ steps.tags.outputs.TAGS }}
           platforms: linux/arm64
