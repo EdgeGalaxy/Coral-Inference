@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coral-inference"
-version = "0"
+version = "0.0.2"
 description = ""
 authors = ["zhaokefei <zhaokefei@tezign.com>"]
 
