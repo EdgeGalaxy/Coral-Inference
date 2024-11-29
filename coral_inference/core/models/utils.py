@@ -27,11 +27,17 @@ class RknnInferenceSession:
             raise ModelArtefactError(f"Unable to initialize RKNN session. Cause: {ret}")
 
     def run(self, output_names, input_feed: dict, run_options=None) -> np.ndarray:
-        outputs = self.rknn_session.inference(inputs=input_feed[self.input_name])[0]
+        _inputs = input_feed[self.input_name]
+        inputs = (
+            np.array(_inputs)
+            if isinstance(_inputs, list)
+            else _inputs[np.newaxis, :, :, :]
+        )
+        outputs = self.rknn_session.inference(inputs=inputs)[0]
         predictions = (
             np.squeeze(outputs, axis=-1) if len(outputs.shape) > 3 else outputs
         )
-        return predictions
+        return [predictions]
 
 
 def get_runtime_platform():
