@@ -1,5 +1,9 @@
 name: Reusable Docker Build
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_call:
     inputs:
@@ -15,6 +19,10 @@ on:
         required: true
         type: boolean
         description: "Whether to push the image"
+      platforms:
+        required: true
+        type: string
+        description: "Platforms to build for (e.g. linux/arm64,linux/amd64)"
     secrets:
       DOCKERHUB_USERNAME:
         required: true
@@ -62,7 +70,7 @@ jobs:
           context: .
           push: ${{ inputs.push-image }}
           tags: ${{ steps.tags.outputs.TAGS }}
-          platforms: linux/arm64
+          platforms: ${{ inputs.platforms }}
           file: ${{ inputs.dockerfile-path }}
           cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
           cache-to: type=inline

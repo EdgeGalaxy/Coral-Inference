@@ -25,6 +25,7 @@ jobs:
     with:
       image-type: rknn
       dockerfile-path: ./docker/dockerfiles/Dockerfile.rknn
+      platforms: linux/arm64
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
