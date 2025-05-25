@@ -5,10 +5,9 @@ description = ""
 authors = ["zhaokefei <zhaokefei@tezign.com>"]
 
 [tool.poetry.dependencies]
-python = "<3.12,>=3.8"
-scipy = "1.10.0"
+python = "<3.13,>=3.9"
 inference = {version = "*", extras = ["http"]}
-loguru = "^0.7.2"
+loguru = "*"
 
 
 [tool.poetry.group.npu]
