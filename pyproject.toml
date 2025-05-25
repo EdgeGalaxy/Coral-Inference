@@ -8,6 +8,7 @@ authors = ["zhaokefei <zhaokefei@tezign.com>"]
 python = "<3.13,>=3.9"
 inference = {version = "*", extras = ["http"]}
 loguru = "*"
+psutil = "^7.0.0"
 
 
 [tool.poetry.group.npu]
