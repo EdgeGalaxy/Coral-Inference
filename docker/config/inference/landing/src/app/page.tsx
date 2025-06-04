@@ -102,8 +102,22 @@ export default function Home() {
 
     try {
       // 创建新的 RTCPeerConnection
-      peerConnection.current = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      const configuration: RTCConfiguration = {
+        iceServers: [
+          {
+            urls: 'stun:stun.l.google.com:19302'
+          }
+        ],
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+      };
+      
+      peerConnection.current = new RTCPeerConnection(configuration);
+
+      // 添加空的音视频轨道
+      const stream = new MediaStream();
+      peerConnection.current.addTransceiver('video', {
+        direction: 'recvonly'
       });
 
       // 设置视频流处理
@@ -128,7 +142,17 @@ export default function Home() {
             type: offer.type,
             sdp: offer.sdp
           },
-          stream_output: ["image"]
+          stream_output: ["image"],
+          webrtc_turn_config: {
+            urls: 'stun:stun.l.google.com:19302',
+            username: '',
+            credential: ''
+          },
+          webcam_fps: 30,
+          max_consecutive_timeouts: 10,
+          min_consecutive_on_time: 3,
+          processing_timeout: 1.0,
+          fps_probe_frames: 30
         }),
       });
 

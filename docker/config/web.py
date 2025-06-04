@@ -2,7 +2,6 @@ import asyncio
 from multiprocessing import Process
 
 from inference.core.interfaces.http.http_api import HttpInterface
-from inference.core.interfaces.stream_manager.manager_app.app import start
 from inference.core.managers.base import ModelManager
 from inference.core.managers.decorators.fixed_size_cache import WithFixedSizeCache
 from inference.core.registries.roboflow import (
@@ -39,13 +38,13 @@ async def delayed_restore():
     await pipeline_cache.restore()
 
 
-if ENABLE_STREAM_API:
-    stream_manager_process = Process(
-        target=start,
-    )
-    stream_manager_process.start()
+# if ENABLE_STREAM_API:
+    # stream_manager_process = Process(
+    #     target=start,
+    # )
+    # stream_manager_process.start()
     # 延迟恢复pipeline
-    asyncio.create_task(delayed_restore())
+    # asyncio.create_task(delayed_restore())
 
 
 logger.info(f"runtime_platform is {runtime_platform}")

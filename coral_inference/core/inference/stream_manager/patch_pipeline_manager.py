@@ -30,14 +30,13 @@ from inference.core.utils.async_utils import Queue as SyncAsyncQueue
 from inference.core.workflows.errors import WorkflowSyntaxError
 from inference.core.workflows.execution_engine.entities.base import WorkflowImageData
 
-from coral_inference.core.models.decorators import extend_method_before
 from coral_inference.core.utils.image_utils import merge_frames
 from coral_inference.core.inference.stream_manager.entities import (
     ExtendCommandType,
     PatchInitialiseWebRTCPipelinePayload
 )
 
-def process_video_frames(
+async def process_video_frames(
     buffer_sink,
     from_inference_queue: SyncAsyncQueue,
     stop_event: Event,
@@ -57,7 +56,9 @@ def process_video_frames(
     while not stop_event.is_set():
         try:
             if not buffer_sink._webrtc_buffer:
+                asyncio.sleep(1/30)
                 continue
+
                 
             predictions, frames = buffer_sink._webrtc_buffer.popleft()
             predictions = predictions if isinstance(predictions, list) else [predictions]
@@ -71,7 +72,35 @@ def process_video_frames(
             
         except Exception as e:
             logger.exception(f"Error processing video frames: {e}")
+            asyncio.sleep(1/30)
             continue
+
+
+def get_frame_from_buffer_sink(buffer_sink, stop_event: Event, from_inference_queue: SyncAsyncQueue):
+    print(f'get_frame_from_buffer_sink, {len(buffer_sink._webrtc_buffer)}')
+    count = 0
+    import time
+    while not stop_event.is_set():
+        if not buffer_sink._webrtc_buffer:
+            time.sleep(1/10)
+            continue
+        
+        import numpy as np
+        mock_frame = np.full((480, 640, 3), [0, 255, 0], dtype=np.uint8)  # 创建绿色画布
+        # 随机生成100个彩色点
+        for _ in range(100):
+            x = np.random.randint(0, 640)
+            y = np.random.randint(0, 480)
+            color = np.random.randint(0, 255, 3)
+            mock_frame[y:y+5, x:x+5] = color  # 每个点大小为5x5像素
+        
+        from_inference_queue.sync_put(mock_frame)
+        count += 1
+        time.sleep(1/10)
+
+        # predictions, frame = buffer_sink._webrtc_buffer.popleft()
+        # predictions, frames = buffer_sink._webrtc_buffer.popleft()
+        # from_inference_queue.sync_put(frames[0].numpy_image if isinstance(frames, list) else frames.numpy_image)
 
 
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
@@ -144,16 +173,25 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
                     if isinstance(output, WorkflowImageData):
                         return output.numpy_image
             return prediction[parsed_payload.stream_output[0]].numpy_image
-        
+
         # 创建并启动处理视频帧的线程
+        # frame_processor = threading.Thread(
+        #     target=process_video_frames,
+        #     args=(
+        #         self._buffer_sink,
+        #         from_inference_queue,
+        #         stop_event,
+        #         get_video_frame,
+        #         parsed_payload.stream_output
+        #     ),
+        # )
+        # frame_processor.start()
         frame_processor = threading.Thread(
-            target=process_video_frames,
+            target=get_frame_from_buffer_sink,
             args=(
                 self._buffer_sink,
-                from_inference_queue,
                 stop_event,
-                get_video_frame,
-                parsed_payload.stream_output
+                from_inference_queue,
             ),
             daemon=True
         )
@@ -170,7 +208,7 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
                 },
             )
         )
-        logger.info(f"WebRTC pipeline initialised. request_id={request_id}...")
+        print(f"WebRTC pipeline initialised. request_id={request_id}...")
     except (
         ValidationError,
         MissingApiKeyError,
@@ -227,11 +265,12 @@ def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
         if command_type is ExtendCommandType.CONSUME_RESULT:
             return self._consume_results(request_id=request_id, payload=payload)
         if command_type is ExtendCommandType.OFFER:
-            return self._offer(request_id==request_id, payload=payload)
+            return self._offer(request_id=request_id, payload=payload)
         raise NotImplementedError(
             f"Command type `{command_type}` cannot be handled"
         )
     except KeyError as error:
+        logger.exception(f"Invalid command sent to InferencePipeline manager - malformed payload")
         self._handle_error(
             request_id=request_id,
             error=error,

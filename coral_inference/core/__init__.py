@@ -50,5 +50,3 @@ inference_pipeline_manager.InferencePipelineManager._offer = patch_pipeline_mana
 inference_pipeline_manager.InferencePipelineManager._handle_command = patch_pipeline_manager.rewrite_handle_command
 stream_manager_client.StreamManagerClient.offer = patch_manager_client.offer
 app.InferencePipelinesManagerHandler.handle = patch_app.rewrite_handle
-
-print('rewrite ......')

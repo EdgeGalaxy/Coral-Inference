@@ -27,7 +27,6 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     )
     @with_route_exceptions
     async def initialize_offer(pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload) -> CommandResponse:
-        print(f'request: {request} pipeline: {pipeline_id}')
         return await stream_manager_client.offer(pipeline_id=pipeline_id, offer_request=request)
     
     app.add_middleware(HookPipelineMiddleware, pipeline_cache=pipeline_cache)

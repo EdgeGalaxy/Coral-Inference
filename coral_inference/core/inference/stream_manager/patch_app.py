@@ -10,7 +10,6 @@ from inference.core.interfaces.stream_manager.manager_app.communication import (
 from inference.core.interfaces.stream_manager.manager_app.entities import (
     PIPELINE_ID_KEY,
     TYPE_KEY,
-    CommandType,
     ErrorType
 )
 from inference.core.interfaces.stream_manager.manager_app.app import (
@@ -38,7 +37,6 @@ def rewrite_handle(self) -> None:
             header_size=HEADER_SIZE,
             buffer_size=SOCKET_BUFFER_SIZE,
         )
-        print(f'rewiret: data {data}')
         data[TYPE_KEY] = ExtendCommandType(data[TYPE_KEY])
         if data[TYPE_KEY] is ExtendCommandType.LIST_PIPELINES:
             return self._list_pipelines(request_id=request_id)
@@ -53,7 +51,6 @@ def rewrite_handle(self) -> None:
                 request_id=request_id, pipeline_id=pipeline_id, command=data
             )
         else:
-            print(f'enter else: {data[TYPE_KEY]}')
             response = handle_command(
                 processes_table=self._processes_table,
                 request_id=request_id,
