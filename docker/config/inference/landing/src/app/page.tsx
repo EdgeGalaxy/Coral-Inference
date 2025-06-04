@@ -128,7 +128,7 @@ export default function Home() {
             type: offer.type,
             sdp: offer.sdp
           },
-          stream_output: "image"
+          stream_output: ["image"]
         }),
       });
 

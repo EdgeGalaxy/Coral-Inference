@@ -207,10 +207,49 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
             error_type=ErrorType.INVALID_PAYLOAD,
         )
 
-@extend_method_before
-def extend_handle_command(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
-    command_type = ExtendCommandType(payload[TYPE_KEY])
-    if command_type is ExtendCommandType.OFFER:
-        self._offer(request_id=request_id, payload=payload)
 
-    
+def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
+    try:
+        logger.info(f"Processing request={request_id}...")
+        command_type = ExtendCommandType(payload[TYPE_KEY])
+        if command_type is ExtendCommandType.INIT:
+            return self._initialise_pipeline(request_id=request_id, payload=payload)
+        if command_type is ExtendCommandType.WEBRTC:
+            return self._start_webrtc(request_id=request_id, payload=payload)
+        if command_type is ExtendCommandType.TERMINATE:
+            return self._terminate_pipeline(request_id=request_id)
+        if command_type is ExtendCommandType.MUTE:
+            return self._mute_pipeline(request_id=request_id)
+        if command_type is ExtendCommandType.RESUME:
+            return self._resume_pipeline(request_id=request_id)
+        if command_type is ExtendCommandType.STATUS:
+            return self._get_pipeline_status(request_id=request_id)
+        if command_type is ExtendCommandType.CONSUME_RESULT:
+            return self._consume_results(request_id=request_id, payload=payload)
+        if command_type is ExtendCommandType.OFFER:
+            return self._offer(request_id==request_id, payload=payload)
+        raise NotImplementedError(
+            f"Command type `{command_type}` cannot be handled"
+        )
+    except KeyError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Invalid command sent to InferencePipeline manager - malformed payload",
+            error_type=ErrorType.INVALID_PAYLOAD,
+        )
+    except NotImplementedError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message=f"Invalid command sent to InferencePipeline manager - {error}",
+            error_type=ErrorType.INVALID_PAYLOAD,
+        )
+    except Exception as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Unknown internal error. Raise this issue providing as "
+            "much of a context as possible: https://github.com/roboflow/inference/issues",
+            error_type=ErrorType.INTERNAL_ERROR,
+        )

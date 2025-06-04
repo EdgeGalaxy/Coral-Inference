@@ -47,7 +47,7 @@ else:
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)
 sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(sinks.InMemoryBufferSink.on_prediction)
 inference_pipeline_manager.InferencePipelineManager._offer = patch_pipeline_manager.offer
-inference_pipeline_manager.InferencePipelineManager._handle_command = patch_pipeline_manager.extend_handle_command(inference_pipeline_manager.InferencePipelineManager._handle_command)
+inference_pipeline_manager.InferencePipelineManager._handle_command = patch_pipeline_manager.rewrite_handle_command
 stream_manager_client.StreamManagerClient.offer = patch_manager_client.offer
 app.InferencePipelinesManagerHandler.handle = patch_app.rewrite_handle
 
