@@ -38,31 +38,30 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
         return JSONResponse(content=data, headers=response.headers)
 
     async def _handle_list_pipelines(
-        self, response: Response, request_data: dict
+        self, request_data, response: Response
     ) -> Response:
         if response.status_code != 200:
             logger.warning(
                 f"Failed to list pipelines, status code: {response.status_code}"
             )
             return response
-
+        
         data = await self._process_response_content(response)
         pipeline_ids = data.get("pipelines", [])
-        data["pipelines"] = self.pipeline_cache.list(pipeline_ids)
+        data["fixed_pipelines"] = self.pipeline_cache.list(pipeline_ids)
 
         return await self._create_response(
             data, response, isinstance(response, StreamingResponse)
         )
 
     async def _handle_initialize_pipeline(
-        self, response: Response, request_data: dict
+        self, request_data, response: Response
     ) -> Response:
         if response.status_code != 200:
             logger.warning(
                 f"Failed to create pipeline, status code: {response.status_code}"
             )
             return response
-
         data = await self._process_response_content(response)
         pipeline_id = data.get("context", {}).get("pipeline_id")
         self.pipeline_cache.create(pipeline_id, request_data)
@@ -92,9 +91,9 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
         # Handle direct route matches
         handler = self.route_handlers.get(path)
         if handler:
-            request_data = await request.json()
+            request_data = await request.json() if request.method.lower() == 'post' else {}
             response = await call_next(request)
-            return await handler(response, request_data)
+            return await handler(request_data, response)
 
         # Handle pipeline operations
         if path.startswith("/inference_pipelines/"):

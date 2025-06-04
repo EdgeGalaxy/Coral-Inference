@@ -17,8 +17,7 @@ from inference.models.utils import ROBOFLOW_MODEL_TYPES
 
 from coral_inference.core import runtime_platform, logger
 
-from pipeline_cache import PipelineCache
-from pipeline_middleware import HookPipelineMiddleware
+from route import init_app
 
 
 model_registry = RoboflowModelRegistry(ROBOFLOW_MODEL_TYPES)
@@ -31,13 +30,12 @@ interface = HttpInterface(model_manager)
 
 app = interface.app
 stream_manager_client = interface.stream_manager_client
-pipeline_cache = PipelineCache(stream_manager_client=stream_manager_client)
-
-app.add_middleware(HookPipelineMiddleware, pipeline_cache=pipeline_cache)
+pipeline_cache = init_app(app, stream_manager_client)
 
 
 async def delayed_restore():
     await asyncio.sleep(8)
+    print('start restore pipeline cache!')
     await pipeline_cache.restore()
 
 

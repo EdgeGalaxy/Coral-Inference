@@ -172,6 +172,9 @@ class PipelineCache(SQLiteWrapper):
                 payload = json.loads(r[self._col_payload_name])
                 pipeline_id = await self.remote_call_restore(payload=payload)
                 r[self._col_restore_pipeline_id] = pipeline_id
+                print(
+                    f"Restored pipeline {r[self._col_pipeline_id]} to {r[self._col_restore_pipeline_id]}"
+                )
                 logger.info(
                     f"Restored pipeline {r[self._col_pipeline_id]} to {r[self._col_restore_pipeline_id]}"
                 )

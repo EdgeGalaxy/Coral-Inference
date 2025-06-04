@@ -16,14 +16,14 @@ from inference.core.entities.requests.inference import InferenceRequestImage
 
 from coral_inference.core.log import logger
 from coral_inference.core.models.utils import RknnInferenceSession
-from coral_inference.core.models.decorators import extend_method
+from coral_inference.core.models.decorators import extend_method_after
 
 
 def rknn_weights_file(self: OnnxRoboflowInferenceModel) -> str:
     return self.weights_file.replace(".onnx", ".rknn")
 
 
-@extend_method
+@extend_method_after
 def extend_initialize_model(self, original_result: None, *args, **kwargs) -> None:
     """扩展初始化模型的方法"""
     model_inputs = self.onnx_session.get_inputs()[0]
@@ -51,7 +51,7 @@ def extend_initialize_model(self, original_result: None, *args, **kwargs) -> Non
         )
 
 
-@extend_method
+@extend_method_after
 def extend_preproc_image(
     self,
     original_result: Tuple[np.ndarray, Tuple[int, int]],
@@ -66,7 +66,7 @@ def extend_preproc_image(
     return img_in, img_dims
 
 
-@extend_method
+@extend_method_after
 def extend_get_all_required_infer_bucket_file(
     self, original_result: List[str], *args, **kwargs
 ) -> List[str]:
@@ -75,7 +75,7 @@ def extend_get_all_required_infer_bucket_file(
     return original_result
 
 
-@extend_method
+@extend_method_after
 def extend_download_model_artifacts(
     self, original_result: None, *args, **kwargs
 ) -> None:

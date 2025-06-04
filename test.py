@@ -1,64 +1,51 @@
-import cv2
-import sys
-import supervision as sv
+import requests
 
-sys.path.append(".")
+from inference_sdk import InferenceHTTPClient
 
-from coral_inference import get_model
+client = InferenceHTTPClient(
+    api_url="http://localhost:9001", # use local inference server
+    api_key="jDmVpLRLlwVHOafDapSi"
+)
 
-# from inference_sdk import InferenceHTTPClient
+data = {
+  "version": "1.0",
+  "inputs": [
+    {
+      "type": "InferenceImage",
+      "name": "image"
+    }
+  ],
+  "steps": [
+    {
+      "type": "ObjectDetectionModel",
+      "name": "model",
+      "image": "$inputs.image",
+      "model_id": "yolov8n-640",
+      "confidence": 0.4,
+      "iou_threshold": 0.4,
+      "class_agnostic_nms": True,
+      "images": "$inputs.image"
+    }
+  ],
+  "outputs": [
+    {
+      "type": "JsonField",
+      "name": "image",
+      "coordinates_system": "own",
+      "selector": "$inputs.image"
+    },
+    {
+      "type": "JsonField",
+      "name": "predictions",
+      "selector": "$steps.model.predictions"
+    }
+  ]
+}
 
-model = get_model(model_id="yolov8s-640", api_key="jDmVpLRLlwVHOafDapSi")
+result = client.start_inference_pipeline_with_workflow(
+    workspace_name="test-j47p5",
+    workflow_specification=data,
+    video_reference=['https://media.roboflow.com/supervision/video-examples/people-walking.mp4']
+)
 
-image = cv2.imread("test.jpg")
-results = model.infer(image)[0]
-sv.Detections.from_inference(results)
-
-
-# client = InferenceHTTPClient(
-#     api_url="http://localhost:8000",
-#     api_key="dfasdfads",
-# )
-
-# with client.use_model(model_id='yolov8n-640'):
-#     predictions = client.infer(image)
-#     print(predictions)
-
-
-# print(client.list_inference_pipelines())
-
-# # # workflow definition
-# OBJECT_DETECTION_WORKFLOW = {
-#     "version": "1.0",
-#     "inputs": [
-#         {"type": "WorkflowImage", "name": "image"},
-#         {
-#             "type": "WorkflowParameter",
-#             "name": "model_id",
-#             "default_value": "yolov8n-640",
-#         },
-#         {"type": "WorkflowParameter", "name": "confidence", "default_value": 0.3},
-#     ],
-#     "steps": [
-#         {
-#             "type": "RoboflowObjectDetectionModel",
-#             "name": "detection",
-#             "image": "$inputs.image",
-#             "model_id": "$inputs.model_id",
-#             "confidence": "$inputs.confidence",
-#         }
-#     ],
-#     "outputs": [
-#         {"type": "JsonField", "name": "result", "selector": "$steps.detection.*"}
-#     ],
-# }
-
-
-# data = client.start_inference_pipeline_with_workflow(
-#     video_reference="/Users/zhaokefei/Downloads/test.mov",
-#     workflow_specification=OBJECT_DETECTION_WORKFLOW,
-# )
-# print(data)
-
-# print(client.get_inference_pipeline_status(pipeline_id='3c103cac-dd35-40f3-8cdd-f5798fcd875a'))
-# print(client.list_inference_pipelines())
+print(result)
