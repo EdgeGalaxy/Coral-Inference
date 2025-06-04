@@ -1,7 +1,12 @@
 from inference.core.models import roboflow
 from inference.core.logger import logger
+from inference.core.interfaces.stream import sinks
+from inference.core.interfaces.stream_manager.manager_app import inference_pipeline_manager
+
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
+from coral_inference.core.inference.stream_manager import patch_pipeline_manager
+from coral_inference.core.inference.stream import patch_sinks
 
 runtime_platform = get_runtime_platform()
 
@@ -34,3 +39,6 @@ else:
     logger.info(
         "runtime_platform is {runtime_platform}, using default OnnxRoboflowInferenceModel"
     )
+
+# 重写InMemoryBufferSink，添加webrtc_buffer
+sinks.InMemoryBufferSink = patch_sinks.InMemoryBufferSinkPatch
