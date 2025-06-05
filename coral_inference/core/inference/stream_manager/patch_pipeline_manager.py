@@ -5,6 +5,7 @@ from threading import Event
 from typing import Dict
 
 import cv2 as cv
+import numpy as np
 from pydantic import ValidationError
 
 from inference.core import logger
@@ -76,27 +77,23 @@ async def process_video_frames(
             continue
 
 
-def get_frame_from_buffer_sink(buffer_sink, stop_event: Event, from_inference_queue: SyncAsyncQueue):
-    print(f'get_frame_from_buffer_sink, {len(buffer_sink._webrtc_buffer)}')
-    count = 0
-    import time
+async def get_frame_from_buffer_sink(buffer_sink, stop_event: Event, from_inference_queue: SyncAsyncQueue):
     while not stop_event.is_set():
         if not buffer_sink._webrtc_buffer:
-            time.sleep(1/10)
+            await asyncio.sleep(1/10)
             continue
         
-        import numpy as np
-        mock_frame = np.full((480, 640, 3), [0, 255, 0], dtype=np.uint8)  # 创建绿色画布
+        mock_frame = np.full((480, 640, 3), [0, 255, 0], dtype=np.uint8)
         # 随机生成100个彩色点
         for _ in range(100):
             x = np.random.randint(0, 640)
             y = np.random.randint(0, 480)
             color = np.random.randint(0, 255, 3)
-            mock_frame[y:y+5, x:x+5] = color  # 每个点大小为5x5像素
+            mock_frame[y:y+5, x:x+5] = color
         
-        from_inference_queue.sync_put(mock_frame)
-        count += 1
-        time.sleep(1/10)
+        await from_inference_queue.async_put(mock_frame)
+        await asyncio.sleep(1/10)
+        print(f'async put frame: {mock_frame.shape}')
 
         # predictions, frame = buffer_sink._webrtc_buffer.popleft()
         # predictions, frames = buffer_sink._webrtc_buffer.popleft()
@@ -187,12 +184,11 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
         # )
         # frame_processor.start()
         frame_processor = threading.Thread(
-            target=get_frame_from_buffer_sink,
-            args=(
+            target=lambda: asyncio.run(get_frame_from_buffer_sink(
                 self._buffer_sink,
                 stop_event,
-                from_inference_queue,
-            ),
+                from_inference_queue
+            )),
             daemon=True
         )
         frame_processor.start()
