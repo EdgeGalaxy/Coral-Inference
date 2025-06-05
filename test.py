@@ -17,26 +17,51 @@ data = {
   ],
   "steps": [
     {
-      "type": "ObjectDetectionModel",
+      "type": "roboflow_core/roboflow_object_detection_model@v1",
       "name": "model",
+      "images": "$inputs.image",
+      "model_id": "yolov8s-640"
+    },
+    {
+      "type": "roboflow_core/bounding_box_visualization@v1",
+      "name": "detection_visualization",
       "image": "$inputs.image",
-      "model_id": "yolov8n-640",
-      "confidence": 0.4,
-      "iou_threshold": 0.4,
-      "class_agnostic_nms": True,
-      "images": "$inputs.image"
+      "predictions": "$steps.model.predictions"
+    },
+    {
+      "type": "roboflow_core/property_definition@v1",
+      "name": "count_objects",
+      "data": "$steps.model.predictions",
+      "operations": [
+        {
+          "type": "SequenceLength"
+        }
+      ]
+    },
+    {
+      "type": "roboflow_core/label_visualization@v1",
+      "name": "annotated_image",
+      "image": "$steps.detection_visualization.image",
+      "predictions": "$steps.model.predictions"
     }
   ],
   "outputs": [
     {
       "type": "JsonField",
-      "name": "image",
+      "name": "count_objects",
       "coordinates_system": "own",
-      "selector": "$inputs.image"
+      "selector": "$steps.count_objects.output"
+    },
+    {
+      "type": "JsonField",
+      "name": "output_image",
+      "coordinates_system": "own",
+      "selector": "$steps.annotated_image.image"
     },
     {
       "type": "JsonField",
       "name": "predictions",
+      "coordinates_system": "own",
       "selector": "$steps.model.predictions"
     }
   ]
@@ -45,7 +70,7 @@ data = {
 result = client.start_inference_pipeline_with_workflow(
     workspace_name="test-j47p5",
     workflow_specification=data,
-    video_reference=['https://media.roboflow.com/supervision/video-examples/people-walking.mp4']
+    video_reference=0
 )
 
 print(result)

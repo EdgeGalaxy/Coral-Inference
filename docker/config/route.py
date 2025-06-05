@@ -12,7 +12,6 @@ from inference.core.interfaces.stream_manager.api.stream_manager_client import (
 
 from coral_inference.core.inference.stream_manager.entities import PatchInitialiseWebRTCPipelinePayload
 
-from offer import offer
 from pipeline_cache import PipelineCache
 from pipeline_middleware import HookPipelineMiddleware
 
@@ -30,15 +29,6 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     async def initialize_offer(pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload) -> CommandResponse:
         return await stream_manager_client.offer(pipeline_id=pipeline_id, offer_request=request)
 
-
-    @app.post(
-        "/inference_pipelines/offer/test",
-        summary="[EXPERIMENTAL] Offer Pipeline Stream",
-        description="[EXPERIMENTAL] Offer Pipeline Stream",
-    )
-    @with_route_exceptions
-    async def initialize_test_offer(request: PatchInitialiseWebRTCPipelinePayload):
-        return await offer(payload=request.model_dump())
     
     app.add_middleware(HookPipelineMiddleware, pipeline_cache=pipeline_cache)
 

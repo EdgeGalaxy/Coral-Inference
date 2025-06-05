@@ -13,6 +13,7 @@ from inference.core.env import (
     ENABLE_STREAM_API,
 )
 from inference.models.utils import ROBOFLOW_MODEL_TYPES
+from inference.core.interfaces.stream_manager.manager_app.app import start
 
 from coral_inference.core import runtime_platform, logger
 
@@ -39,12 +40,12 @@ async def delayed_restore():
 
 
 # if ENABLE_STREAM_API:
-    # stream_manager_process = Process(
-    #     target=start,
-    # )
-    # stream_manager_process.start()
-    # 延迟恢复pipeline
-    # asyncio.create_task(delayed_restore())
+#     stream_manager_process = Process(
+#         target=start,
+#     )
+#     stream_manager_process.start()
+#     # 延迟恢复pipeline
+#     asyncio.create_task(delayed_restore())
 
 
 logger.info(f"runtime_platform is {runtime_platform}")

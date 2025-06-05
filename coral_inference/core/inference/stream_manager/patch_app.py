@@ -1,6 +1,8 @@
 
-from typing import Optional
+import sys
+from typing import Optional, Dict
 from uuid import uuid4
+from types import FrameType
 
 from inference.core import logger
 from inference.core.interfaces.stream_manager.manager_app.communication import (
@@ -15,7 +17,9 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
 from inference.core.interfaces.stream_manager.manager_app.app import (
     HEADER_SIZE,
     SOCKET_BUFFER_SIZE,
-    handle_command
+    handle_command,
+    PROCESSES_TABLE_LOCK,
+    ManagedInferencePipeline,
 )
 from inference.core.interfaces.stream_manager.manager_app.serialisation import (
     prepare_error_response,
@@ -68,7 +72,7 @@ def rewrite_handle(self) -> None:
                 pipeline_id=pipeline_id,
             )
     except (KeyError, ValueError, MalformedPayloadError) as error:
-        logger.error(
+        logger.exception(
             f"Invalid payload in processes manager. error={error} request_id={request_id}..."
         )
         payload = prepare_error_response(
@@ -101,3 +105,21 @@ def rewrite_handle(self) -> None:
             request_id=request_id,
             pipeline_id=pipeline_id,
         )
+    
+
+def rewrite_execute_termination(
+    signal_number: int,
+    frame: FrameType,
+    processes_table: Dict[str, ManagedInferencePipeline],
+) -> None:
+    with PROCESSES_TABLE_LOCK:
+        pipeline_ids = list(processes_table.keys())
+        for pipeline_id in pipeline_ids:
+            print(f"Terminating pipeline: {pipeline_id}")
+            processes_table[pipeline_id].pipeline_manager.terminate()
+            print(f"Pipeline: {pipeline_id} terminated.")
+            print(f"Joining pipeline: {pipeline_id}")
+            processes_table[pipeline_id].pipeline_manager.join()
+            print(f"Pipeline: {pipeline_id} joined.")
+        print(f"Termination handler completed.")
+        sys.exit(0)

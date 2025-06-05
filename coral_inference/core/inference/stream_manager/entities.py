@@ -12,7 +12,7 @@ class PatchInitialiseWebRTCPipelinePayload(BaseModel):
     stream_output: Optional[List[Optional[str]]] = Field(default_factory=list)
     data_output: Optional[List[Optional[str]]] = Field(default_factory=list)
     webrtc_peer_timeout: float = 1
-    webcam_fps: Optional[float] = None
+    webcam_fps: Optional[float] = 30
     processing_timeout: float = 0.1
     fps_probe_frames: int = 10
     max_consecutive_timeouts: int = 30
