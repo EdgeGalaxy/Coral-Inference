@@ -114,7 +114,7 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
             errors = []
             if not any(
                 isinstance(v, WorkflowImageData) for v in prediction.values()
-            ):
+            ) or not parsed_payload.stream_output:
                 errors.append("Visualisation blocks were not executed")
                 errors.append("or workflow was not configured to output visuals.")
                 errors.append(

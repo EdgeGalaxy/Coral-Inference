@@ -105,7 +105,6 @@ class VideoTransformTrack(VideoStreamTrack):
         ]
         if np_frame is None:
             if not self._last_frame:
-                print('self._last_frame is None')
                 np_frame = overlay_text_on_np_frame(
                     np.zeros((480, 640, 3), dtype=np.uint8),
                     ["Inference pipeline is starting..."],
@@ -115,7 +114,6 @@ class VideoTransformTrack(VideoStreamTrack):
                 self._max_consecutive_timeouts
                 and self._consecutive_timeouts >= self._max_consecutive_timeouts
             ):
-                print('self._max_consecutive_timeouts')
                 np_frame = overlay_text_on_np_frame(
                     self._last_frame.to_ndarray(format="bgr24"),
                     workflow_too_slow_message,
@@ -128,14 +126,12 @@ class VideoTransformTrack(VideoStreamTrack):
                 self._max_consecutive_timeouts
                 and self._consecutive_timeouts >= self._max_consecutive_timeouts
             ):
-                print('self._max_consecutive_timeouts')
                 np_frame = overlay_text_on_np_frame(
                     self._last_frame.to_ndarray(format="bgr24"),
                     workflow_too_slow_message,
                 )
                 new_frame = VideoFrame.from_ndarray(np_frame, format="bgr24")
             else:
-                print('else')
                 new_frame = VideoFrame.from_ndarray(np_frame, format="bgr24")
 
         try:
