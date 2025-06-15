@@ -55,6 +55,9 @@ jobs:
           if [ "${{ inputs.image-type }}" = "rknn" ]; then
             echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest-rknn${{env.RKNN_VERSION}}" >> $GITHUB_OUTPUT
             echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest-rknn${{env.RKNN_VERSION}}" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.image-type }}" = "gpu" ]; then
+            echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest-gpu" >> $GITHUB_OUTPUT
+            echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest-gpu" >> $GITHUB_OUTPUT
           else
             echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest" >> $GITHUB_OUTPUT
             echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:latest" >> $GITHUB_OUTPUT

@@ -22,7 +22,7 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # Install all dependencies including GPU packages
-RUN poetry install --with gpu
+RUN poetry install --with gpu --no-root
 
 COPY coral_inference /tmp/coral_inference
 RUN poetry build && \

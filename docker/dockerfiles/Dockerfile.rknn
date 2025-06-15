@@ -36,7 +36,7 @@ COPY pyproject.toml poetry.lock ./
 COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /tmp/
 
 # Install all dependencies
-RUN poetry install && \
+RUN poetry install --no-root && \
     pip install /tmp/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
 
 COPY coral_inference /tmp/coral_inference
