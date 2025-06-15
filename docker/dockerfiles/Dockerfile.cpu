@@ -52,7 +52,7 @@ COPY docker/config /workspace/
 
 # Environment variables
 ENV VERSION_CHECK_MODE=continuous \
-    PROJECT=roboflow-platform \
+    PROJECT=coral-platform \
     NUM_WORKERS=1 \
     HOST=0.0.0.0 \
     PORT=9001 \
