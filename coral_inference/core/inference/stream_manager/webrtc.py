@@ -58,7 +58,7 @@ class VideoTransformTrack(VideoStreamTrack):
         self._id = time.time_ns()
         self._processed = 0
 
-        self.fps = webcam_fps
+        self.fps = int(webcam_fps)
 
         self.from_inference_queue: "SyncAsyncQueue[np.ndarray]" = from_inference_queue
 
@@ -136,9 +136,9 @@ class VideoTransformTrack(VideoStreamTrack):
 
         try:
             new_frame.pts = self._processed
-            new_frame.time_base = Fraction(1, self.fps)
+            new_frame.time_base = Fraction(1, int(self.fps))
         except Exception as e:
-            print(f'Error setting frame time: {e}')
+            print(f'Error setting frame time: {e} {self.fps}')
             new_frame.pts = self._processed
             new_frame.time_base = Fraction(1, 30)
 

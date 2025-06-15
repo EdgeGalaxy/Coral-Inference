@@ -67,4 +67,5 @@ ENV VERSION_CHECK_MODE=continuous \
     METRICS_ENABLED=False \
     CURRENT_INFERENCE_PLATFORM=onnx
 
-ENTRYPOINT uvicorn web:app --workers $NUM_WORKERS --host $HOST --port $PORT
+RUN chmod +x ./entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]

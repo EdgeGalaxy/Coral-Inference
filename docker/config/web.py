@@ -1,5 +1,4 @@
 import asyncio
-from multiprocessing import Process
 
 from inference.core.interfaces.http.http_api import HttpInterface
 from inference.core.managers.base import ModelManager
@@ -10,12 +9,11 @@ from inference.core.registries.roboflow import (
 
 from inference.core.env import (
     MAX_ACTIVE_MODELS,
-    ENABLE_STREAM_API,
 )
 from inference.models.utils import ROBOFLOW_MODEL_TYPES
-from inference.core.interfaces.stream_manager.manager_app.app import start
 
-from coral_inference.core import runtime_platform, logger
+from coral_inference.core import runtime_platform, logger as inference_logger
+from loguru import logger
 
 from route import init_app
 
@@ -32,20 +30,17 @@ app = interface.app
 stream_manager_client = interface.stream_manager_client
 pipeline_cache = init_app(app, stream_manager_client)
 
-
+@app.on_event("startup")
 async def delayed_restore():
-    await asyncio.sleep(8)
-    print('start restore pipeline cache!')
-    await pipeline_cache.restore()
-
-
-# if ENABLE_STREAM_API:
-    # stream_manager_process = Process(
-    #     target=start,
-    # )
-    # stream_manager_process.start()
-    # 延迟恢复pipeline
-    # asyncio.create_task(delayed_restore())
-
+    while True:
+        try:
+            pipelines = await stream_manager_client.list_pipelines()
+        except Exception as e:
+            await asyncio.sleep(2)
+            logger.error(f"Error call list pipelines: {e}")
+        else:
+            logger.info(f'fetch pipelines data: {pipelines} & start restore pipeline cache!')
+            await pipeline_cache.restore()
+            break
 
 logger.info(f"runtime_platform is {runtime_platform}")

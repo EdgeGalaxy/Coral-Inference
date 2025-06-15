@@ -115,11 +115,11 @@ def rewrite_execute_termination(
     with PROCESSES_TABLE_LOCK:
         pipeline_ids = list(processes_table.keys())
         for pipeline_id in pipeline_ids:
-            print(f"Terminating pipeline: {pipeline_id}")
+            logger.info(f"Terminating pipeline: {pipeline_id}")
             processes_table[pipeline_id].pipeline_manager.terminate()
-            print(f"Pipeline: {pipeline_id} terminated.")
-            print(f"Joining pipeline: {pipeline_id}")
+            logger.info(f"Pipeline: {pipeline_id} terminated.")
+            logger.info(f"Joining pipeline: {pipeline_id}")
             processes_table[pipeline_id].pipeline_manager.join()
-            print(f"Pipeline: {pipeline_id} joined.")
-        print(f"Termination handler completed.")
+            logger.info(f"Pipeline: {pipeline_id} joined.")
+        logger.info(f"Termination handler completed.")
         sys.exit(0)
