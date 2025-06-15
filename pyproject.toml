@@ -24,6 +24,7 @@ optional = true
 
 [tool.poetry.group.gpu.dependencies]
 inference-gpu = {extras = ["http"], version = "*"}
+onnxruntime-gpu = "~1.21.0"
 
 
 [[tool.poetry.source]]

@@ -86,7 +86,7 @@ class PipelineCache(SQLiteWrapper):
                 _pipeline_ids.append(pipeline_id_mapper[pipeline_id])
             else:
                 logger.warning(f"Pipeline {pipeline_id} not found in cache")
-        return _pipeline_ids
+        return list(set(_pipeline_ids + list(pipeline_id_mapper.values())))
 
     def get(self, pipeline_id: str) -> Dict[str, Any]:
         rows = self.select()
