@@ -28,6 +28,8 @@ def remove_app_root_mount(app: FastAPI):
     for i, route in enumerate(app.routes):
         if isinstance(route, Mount) and route.path == '' and route.name == "root":
             indices_to_remove.append(i)
+        if isinstance(route, Mount) and route.path == "/static" and route.name == "static":
+            indices_to_remove.append(i)
 
     for i in sorted(indices_to_remove, reverse=True):
         app.routes.pop(i)
