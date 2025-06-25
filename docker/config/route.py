@@ -4,6 +4,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.routing import Mount
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import HTTPException
 from loguru import logger
 
 from inference.core.interfaces.http.http_api import with_route_exceptions
@@ -48,6 +49,9 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     )
     @with_route_exceptions
     async def initialize_offer(pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload) -> CommandResponse:
+        pipeline_id = pipeline_cache.get(pipeline_id)
+        if pipeline_id is None:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
         return await stream_manager_client.offer(pipeline_id=pipeline_id, offer_request=request)
 
     app.add_middleware(HookPipelineMiddleware, pipeline_cache=pipeline_cache)
