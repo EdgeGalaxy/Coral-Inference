@@ -17,7 +17,7 @@ on:
         default: false
 
 env:
-  RKNN_VERSION: "1.6.0"
+  RKNN_VERSION: "2.3.2"
 
 jobs:
   docker-rknn:

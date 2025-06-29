@@ -79,7 +79,6 @@ class VideoTransformTrack(VideoStreamTrack):
             av_logging.set_libav_level(av_logging.ERROR)
             self._av_logging_set = True
         self._processed += 1
-        print(f'self._processed: {self._processed}')
 
         np_frame: Optional[np.ndarray] = None
         try:

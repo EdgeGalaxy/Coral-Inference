@@ -16,9 +16,6 @@ on:
         description: "Do you want to push image after build?"
         default: false
 
-env:
-  RKNN_VERSION: "1.6.0"
-
 jobs:
   docker-rknn:
     uses: ./.github/workflows/reusable-docker-build.yml
