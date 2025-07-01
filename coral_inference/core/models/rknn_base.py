@@ -90,6 +90,11 @@ def extend_download_model_artifacts(
             endpoint_type=ModelEndpointType.ORT,
             device_id=self.device_id,
         )
+        if 'ort' not in api_data:
+            raise ModelArtefactError(
+                "Could not find `ort` key in roboflow API model description response."
+            )
+        api_data = api_data['ort']
 
     if "rknn_model" not in api_data:
         raise ModelArtefactError(
