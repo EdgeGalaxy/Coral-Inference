@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { MetricsModal } from "@/components/metrics-modal";
+import { BarChart } from "lucide-react";
+import { getApiBaseUrl } from "@/utils/api";
+
 
 interface Pipeline {
   id: string;
@@ -29,16 +33,6 @@ const defaultOptions = {
   headers: defaultHeaders,
 };
 
-// 获取API基础URL
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:9001';
-    }
-  }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001';
-};
 
 export default function Home() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([{"id": "xxxxxx", "status": "success"}]);
@@ -47,6 +41,7 @@ export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const apiBaseUrl = getApiBaseUrl();
+  const [showMetrics, setShowMetrics] = useState(false);
 
   // 获取pipeline列表
   const fetchPipelines = async () => {
@@ -224,7 +219,7 @@ export default function Home() {
   return (
     <main className="min-h-screen p-8">
       {/* 顶部导航栏 */}
-      <div className="flex justify-start mb-8">
+      <div className="flex justify-between mb-8">
         <Select
           value={selectedPipeline || ''}
           onValueChange={(value: string) => setSelectedPipeline(value)}
@@ -247,6 +242,16 @@ export default function Home() {
                 ))}
           </SelectContent>
         </Select>
+
+        {selectedPipeline && (
+          <Button
+            onClick={() => setShowMetrics(true)}
+            className="flex items-center gap-2 border border-gray-200 hover:bg-gray-100"
+          >
+            <BarChart className="h-4 w-4" />
+            查看指标
+          </Button>
+        )}
       </div>
 
       {/* 主要内容区域 */}
@@ -289,6 +294,16 @@ export default function Home() {
           </>
         )}
       </div>
+
+      {/* 指标Modal */}
+      {selectedPipeline && (
+        <MetricsModal
+          isOpen={showMetrics}
+          onClose={() => setShowMetrics(false)}
+          pipelineId={selectedPipeline}
+          apiBaseUrl={apiBaseUrl}
+        />
+      )}
     </main>
   );
 }

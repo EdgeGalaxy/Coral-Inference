@@ -75,12 +75,12 @@ client = InferenceHTTPClient(
 
 # print(result)
 
-# print(client.list_inference_pipelines())
+print(client.list_inference_pipelines())
 # r = client.pause_inference_pipeline(pipeline_id="d8620d8b-f7ec-4649-83df-9525573cbfc5")
 # print(r)
 
-# print(client.get_inference_pipeline_status(pipeline_id="d8620d8b-f7ec-4649-83df-9525573cbfc5"))
+# print(client.get_inference_pipeline_status(pipeline_id="0f85a17f-99cc-45d7-bfba-84314f236bcf"))
 # print(client.consume_inference_pipeline_result(pipeline_id="bcb55e80-611a-4f54-8019-160ecf060b10"))
 # print(client.resume_inference_pipeline(pipeline_id="d39943ab-c019-4adb-bf0c-5e3513a21fb9"))
 # print(client.terminate_inference_pipeline(pipeline_id="bcb55e80-611a-4f54-8019-160ecf060b10"))
-# print(client.consume_inference_pipeline_result(pipeline_id="494afca3-1e91-4d1d-88b1-292ca3134fbe"))
+# print(client.consume_inference_pipeline_result(pipeline_id="0f85a17f-99cc-45d7-bfba-84314f236bcf"))

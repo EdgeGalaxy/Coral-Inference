@@ -98,6 +98,13 @@ class PipelineCache(SQLiteWrapper):
         else:
             logger.warning(f"Pipeline {pipeline_id} not found in cache")
             return None
+    
+    def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[str]:   
+        rows = self.select()
+        pipeline_id_mapper = {
+            r[self._col_restore_pipeline_id]: r[self._col_pipeline_id] for r in rows
+        }
+        return pipeline_id_mapper.get(pipeline_id)
 
     def terminate(self, pipeline_id: str):
         try:
