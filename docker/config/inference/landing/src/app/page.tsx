@@ -35,7 +35,7 @@ const defaultOptions = {
 
 
 export default function Home() {
-  const [pipelines, setPipelines] = useState<Pipeline[]>([{"id": "xxxxxx", "status": "success"}]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -49,7 +49,7 @@ export default function Home() {
       const response = await fetch(`${apiBaseUrl}/inference_pipelines/list`, defaultOptions);
       const data = await response.json();
       console.log('data', data)
-      setPipelines(data.pipelines?.map((pipeline: string) => ({ id: pipeline})));
+      setPipelines(data.fixed_pipelines?.map((pipeline: string) => ({ id: pipeline})));
       // 如果有pipeline但没有选中的，默认选择第一个
       if (data.pipelines?.length > 0 && !selectedPipeline) {
         setSelectedPipeline(data.pipelines[0]);

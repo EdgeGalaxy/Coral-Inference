@@ -66,7 +66,6 @@ async def process_video_frames(
             
             # 合并所有帧
             merged_frame = merge_frames(show_frames, layout='grid')
-            print(f'merged_frame: {merged_frame.shape}')
             await from_inference_queue.async_put(merged_frame)
             
         except Exception as e:

@@ -122,11 +122,6 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         monitor: PipelineMonitor = Depends(get_monitor)
     ) -> MetricsResponse:
         try:
-            # 获取pipeline_cache_id
-            pipeline_cache_id = pipeline_cache.get(pipeline_id)
-            if pipeline_cache_id is None:
-                raise HTTPException(status_code=404, detail="Pipeline not found")
-
             # 如果没有指定时间范围，使用最近minutes分钟
             if start_time is None or end_time is None:
                 end_time = time.time()
@@ -134,8 +129,9 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
 
             # 获取原始指标数据
             metrics = await monitor.get_metrics_by_timerange(
-                pipeline_cache_id, start_time, end_time
+                pipeline_id, start_time, end_time
             )
+            logger.info(f'metrics: {metrics}')
 
             # 转换数据格式为图表所需格式
             dates = []

@@ -41,12 +41,10 @@ class ResultsCollector:
                     if not results.frames_metadata or not results.outputs:
                         continue
 
-                    timestamp = int(time.time() * 1000)
-                    pipeline_timestamp_dir = pipeline_dir / 'results' / str(timestamp)
+                    pipeline_timestamp_dir = pipeline_dir / 'results' 
                     pipeline_timestamp_dir.mkdir(parents=True, exist_ok=True)
                     
                     await self._save_results(pipeline_cache_id, results, pipeline_timestamp_dir)
-                    logger.debug(f"已保存Pipeline {pipeline_cache_id}的结果")
                 except Exception as e:
                     logger.error(f"获取Pipeline {pipeline_cache_id}结果时出错: {e}")
         
@@ -81,7 +79,6 @@ class ResultsCollector:
                 # 保存到JSON文件
                 with open(file_path, "w") as f:
                     json.dump(output_data, f, indent=2)
-                logger.debug(f"已保存结果文件: {file_path}")
                     
             except Exception as e:
                 logger.error(f"保存结果文件时出错: {e}")
@@ -107,9 +104,7 @@ class MetricsCollector:
 
     def _get_metrics_filename(self, pipeline_cache_id: str, time_slot: str) -> Path:
         """生成指标文件路径"""
-        dt = datetime.strptime(time_slot[:8], '%Y%m%d')
-        month_dir = dt.strftime('%Y%m')
-        return self.output_dir / pipeline_cache_id / 'metrics' / month_dir / f"{time_slot}.json"
+        return self.output_dir / pipeline_cache_id / 'metrics' / f"{time_slot}.json"
 
     async def check_and_save_report(self, pipeline_ids_mapper: Dict[str, str]):
         """检查并保存stream manager状态"""
@@ -142,7 +137,7 @@ class MetricsCollector:
                     await self._save_metrics_to_file(pipeline_cache_id, last_save_slot)
                     self.metrics_last_save_time[pipeline_cache_id] = current_time
 
-                logger.debug(f"已更新Pipeline {pipeline_cache_id}的指标数据")
+                # logger.debug(f"已更新Pipeline {pipeline_cache_id}的指标数据")
                 
             except Exception as e:
                 logger.exception(f"获取或保存状态信息时出错: {e}")
@@ -201,12 +196,14 @@ class MetricsCollector:
         """获取指定时间范围内的指标数据"""
         start_dt = datetime.fromtimestamp(start_time)
         end_dt = datetime.fromtimestamp(end_time)
+        logger.info(f"start_dt: {start_dt}, end_dt: {end_dt}")
         current_dt = start_dt
         
         all_metrics = []
         while current_dt <= end_dt:
             slot = self._get_time_slot(current_dt.timestamp())
             file_path = self._get_metrics_filename(pipeline_cache_id, slot)
+            logger.info(f"file_path: {file_path}")
             
             if file_path.exists():
                 try:
@@ -325,7 +322,6 @@ class PipelineMonitor:
         while self.running:
             try:
                 pipeline_ids_mapper = await self.get_pipeline_ids()
-                logger.debug(f"pipeline_ids_mapper: {pipeline_ids_mapper}")
                 
                 # 调用各个组件的功能
                 await self.results_collector.poll_and_save_results(pipeline_ids_mapper)
@@ -390,7 +386,7 @@ class PipelineMonitor:
                 continue
             restore_pipeline_id = self.pipeline_cache.get_restore_pipeline_id(pipeline_id)
             if restore_pipeline_id is None:
-                logger.warning(f"Pipeline {pipeline_id} not found in cache")
+                logger.warning(f"Monitor Pipeline {pipeline_id} not found in cache")
                 continue
             self.pipeline_ids_mapper[pipeline_id] = restore_pipeline_id
             pipeline_ids_mapper[pipeline_id] = restore_pipeline_id
