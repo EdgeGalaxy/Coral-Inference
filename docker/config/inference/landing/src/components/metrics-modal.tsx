@@ -1,213 +1,594 @@
-import { useEffect, useState } from 'react';
+'use client'
+
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Card } from "@/components/ui/card";
-import { LineChart } from "@/components/ui/line-chart";
-import { Loader2 } from "lucide-react";
-import { getApiBaseUrl } from "@/utils/api";
-import { TimeRangePicker } from "@/components/time-range-picker";
-import { differenceInMinutes, format, isAfter, isBefore, parseISO } from "date-fns";
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { RefreshCw, TrendingUp, Activity, Clock, AlertCircle, Zap, Timer, BarChart3 } from 'lucide-react'
+import { pipelineApi, apiUtils, MetricsResponse } from '@/lib/api'
 
 interface MetricsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  pipelineId: string;
-  apiBaseUrl: string;
-}
-
-interface MetricsData {
-  dates: string[];
-  datasets: {
-    name: string;
-    data: number[];
-  }[];
-}
-
-interface TimeRangeParams {
-  minutes?: number;
-  start_time?: number;
-  end_time?: number;
+  isOpen: boolean
+  onClose: () => void
+  pipelineId: string | null
 }
 
 export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps) {
-  const apiBaseUrl = getApiBaseUrl();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeParams>({ minutes: 5 });
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [metricsData, setMetricsData] = useState<MetricsResponse | null>(null)
+  const [timeRange, setTimeRange] = useState<string>('5')
+  const [refreshing, setRefreshing] = useState(false)
 
+  // 获取指标数据
+  const fetchMetrics = async () => {
+    if (!pipelineId) return
+
+    try {
+      setLoading(true)
+      setError(null)
+      
+      console.log(`正在获取Pipeline ${pipelineId} 的指标数据...`)
+      
+      const minutes = parseInt(timeRange)
+      const response = await pipelineApi.getMetrics(pipelineId, { minutes })
+      
+      console.log('获取到指标数据:', response)
+      setMetricsData(response)
+      
+    } catch (error) {
+      console.error('获取指标数据失败:', error)
+      setError(apiUtils.formatError(error))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 刷新数据
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchMetrics()
+    setRefreshing(false)
+  }
+
+  // 当弹窗打开或pipelineId变化时获取数据
   useEffect(() => {
     if (isOpen && pipelineId) {
-      fetchMetrics();
+      fetchMetrics()
     }
-  }, [isOpen, pipelineId, timeRange]);
+  }, [isOpen, pipelineId, timeRange])
 
-  const handleTimeRangeChange = (params: TimeRangeParams) => {
-    setTimeRange(params);
-  };
+  // 转换指标数据为图表格式
+  const convertToChartData = (data: MetricsResponse) => {
+    if (!data.dates || data.dates.length === 0) return []
 
-  const fetchMetrics = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    return data.dates.map((date, index) => {
+      const dataPoint: any = { time: date }
       
-      // 构建查询参数
-      const queryParams = new URLSearchParams();
-      if (timeRange.minutes) {
-        queryParams.append('minutes', timeRange.minutes.toString());
-      }
-      if (timeRange.start_time) {
-        queryParams.append('start_time', timeRange.start_time.toString());
-      }
-      if (timeRange.end_time) {
-        queryParams.append('end_time', timeRange.end_time.toString());
-      }
-      
-      const response = await fetch(
-        `${apiBaseUrl}/inference_pipelines/${pipelineId}/metrics?${queryParams.toString()}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
+      data.datasets.forEach(dataset => {
+        if (dataset.data && dataset.data[index] !== undefined) {
+          dataPoint[dataset.name] = dataset.data[index]
         }
-      );
+      })
+      
+      return dataPoint
+    })
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch metrics data');
-      }
+  // 获取延迟相关的数据集
+  const getLatencyDatasets = (data: MetricsResponse) => {
+    if (!data.datasets) return []
+    
+    return data.datasets.filter(dataset => 
+      dataset.data && dataset.data.length > 0 &&
+      (dataset.name.includes('Frame Decoding') || 
+       dataset.name.includes('Inference Latency') || 
+       dataset.name.includes('E2E Latency'))
+    )
+  }
 
-      const data = await response.json();
-      setMetricsData(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setLoading(false);
+  // 获取吞吐量数据集
+  const getThroughputDatasets = (data: MetricsResponse) => {
+    if (!data.datasets) return []
+    
+    return data.datasets.filter(dataset => 
+      dataset.data && dataset.data.length > 0 &&
+      dataset.name.includes('Throughput')
+    )
+  }
+
+  // 获取状态数据集
+  const getStateDatasets = (data: MetricsResponse) => {
+    if (!data.datasets) return []
+    
+    return data.datasets.filter(dataset => 
+      dataset.data && dataset.data.length > 0 &&
+      dataset.name.includes('State')
+    )
+  }
+
+  // 获取其他数字类型的数据集
+  const getOtherNumericDatasets = (data: MetricsResponse) => {
+    if (!data.datasets) return []
+    
+    return data.datasets.filter(dataset => 
+      dataset.data && dataset.data.length > 0 && 
+      typeof dataset.data[0] === 'number' &&
+      !dataset.name.includes('Frame Decoding') &&
+      !dataset.name.includes('Inference Latency') &&
+      !dataset.name.includes('E2E Latency') &&
+      !dataset.name.includes('Throughput')
+    )
+  }
+
+  // 转换状态数据为时间线格式
+  const convertStateDataToTimeline = (data: MetricsResponse, stateDatasets: any[]) => {
+    if (!data.dates || data.dates.length === 0 || stateDatasets.length === 0) return []
+
+    return data.dates.map((date, index) => {
+      const dataPoint: any = { time: date }
+      
+      stateDatasets.forEach(dataset => {
+        if (dataset.data && dataset.data[index] !== undefined) {
+          const state = dataset.data[index]
+          // 将状态转换为数字以便在图表中显示
+          let stateValue = 0
+          switch (state) {
+            case 'NOT_STARTED':
+              stateValue = 0
+              break
+            case 'INITIALISING':
+              stateValue = 1
+              break
+            case 'RESTARTING':
+              stateValue = 2
+              break
+            case 'RUNNING':
+              stateValue = 3
+              break
+            case 'PAUSED':
+              stateValue = 4
+              break
+            case 'MUTED':
+              stateValue = 5
+              break
+            case 'TERMINATING':
+              stateValue = 6
+              break
+            case 'ENDED':
+              stateValue = 7
+              break
+            case 'ERROR':
+              stateValue = 8
+              break
+            default:
+              stateValue = 0
+          }
+          dataPoint[dataset.name] = stateValue
+          dataPoint[`${dataset.name}_label`] = state
+        }
+      })
+      
+      return dataPoint
+    })
+  }
+
+  // 自定义状态图表的Tooltip
+  const StateTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+          <p className="font-medium">{`时间: ${label}`}</p>
+          {payload.map((entry: any, index: number) => {
+            const labelKey = `${entry.dataKey}_label`
+            const stateLabel = entry.payload[labelKey] || 'unknown'
+            return (
+              <p key={index} style={{ color: entry.color }}>
+                {`${entry.dataKey.replace(' (', ' (')}: ${stateLabel}`}
+              </p>
+            )
+          })}
+        </div>
+      )
     }
-  };
+    return null
+  }
 
-  // 创建图表配置，优化线条粗细和可见性
-  const createChartConfig = (datasets: any[]) => {
-    return datasets.map(d => ({
-      ...d,
-      borderWidth: 2, // 减小线条宽度
-      pointRadius: 1.5, // 减小点的大小
-      pointHoverRadius: 3,
-      tension: 0.2,
-      fill: false,
-      borderColor: '#FF3A29',
-    }));
-  };
+  const chartData = metricsData ? convertToChartData(metricsData) : []
+  const latencyDatasets = metricsData ? getLatencyDatasets(metricsData) : []
+  const throughputDatasets = metricsData ? getThroughputDatasets(metricsData) : []
+  const stateDatasets = metricsData ? getStateDatasets(metricsData) : []
+  const otherNumericDatasets = metricsData ? getOtherNumericDatasets(metricsData) : []
+  const stateChartData = metricsData ? convertStateDataToTimeline(metricsData, stateDatasets) : []
+
+  const colors = [
+    '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', 
+    '#d084d0', '#ffb347', '#87ceeb', '#dda0dd', '#98fb98'
+  ]
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="flex h-full w-full flex-col sm:max-h-[90vh] sm:max-w-[70vw]">
-        <DialogHeader className="pb-2">
-          <DialogTitle>Pipeline 性能指标</DialogTitle>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Pipeline 指标监控
+            <Badge variant="outline" className="ml-auto">
+              API模式
+            </Badge>
+          </DialogTitle>
+          <DialogDescription>
+            {pipelineId ? `Pipeline: ${pipelineId}` : '未选择Pipeline'}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="mb-4 p-2 bg-muted/20 border rounded-md">
-          <TimeRangePicker onTimeRangeChange={handleTimeRangeChange} />
-        </div>
-
-        <div className="space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="space-y-6">
+          {/* 控制面板 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">时间范围:</span>
+                <Select value={timeRange} onValueChange={setTimeRange}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1分钟</SelectItem>
+                    <SelectItem value="5">5分钟</SelectItem>
+                    <SelectItem value="15">15分钟</SelectItem>
+                    <SelectItem value="30">30分钟</SelectItem>
+                    <SelectItem value="60">1小时</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          ) : error ? (
-            <div className="text-red-500 text-center">{error}</div>
-          ) : metricsData ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* FPS图表 */}
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">FPS</h3>
-                <LineChart
-                  data={{
-                    labels: metricsData.dates,
-                    datasets: createChartConfig([
-                      {
-                        label: "FPS",
-                        data: metricsData.datasets.find(d => d.name === "Throughput")?.data || [],
-                      },
-                    ]),
-                  }}
-                  className="w-full aspect-[3/2]"
-                />
-              </Card>
+            
+            <Button
+              onClick={handleRefresh}
+              disabled={loading || refreshing}
+              size="sm"
+              variant="outline"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? '刷新中...' : '刷新'}
+            </Button>
+          </div>
 
-              {/* 延迟图表 */}
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">帧解码延迟</h3>
-                <LineChart
-                  data={{
-                    labels: metricsData.dates,
-                    datasets: createChartConfig(metricsData.datasets
-                      .filter(d => d.name.startsWith("Frame Decoding Latency"))
-                      .map(d => ({
-                        label: d.name,
-                        data: d.data,
-                      }))),
-                  }}
-                  className="w-full aspect-[3/2]"
-                />
-              </Card>
+          {/* 加载状态 */}
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+              <span className="text-sm text-muted-foreground">正在加载指标数据...</span>
+            </div>
+          )}
 
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">推理延迟</h3>
-                <LineChart
-                  data={{
-                    labels: metricsData.dates,
-                    datasets: createChartConfig(metricsData.datasets
-                      .filter(d => d.name.startsWith("Inference Latency"))
-                      .map(d => ({
-                        label: d.name,
-                        data: d.data,
-                      }))),
-                  }}
-                  className="w-full aspect-[3/2]"
-                />
-              </Card>
+          {/* 错误状态 */}
+          {error && (
+            <Card className="border-red-200">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 text-red-600">
+                  <AlertCircle className="h-5 w-5" />
+                  <span className="font-medium">获取指标数据失败</span>
+                </div>
+                <p className="mt-2 text-sm text-red-500">{error}</p>
+                <Button
+                  onClick={fetchMetrics}
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                >
+                  重试
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">E2E延迟</h3>
-                <LineChart
-                  data={{
-                    labels: metricsData.dates,
-                    datasets: createChartConfig(metricsData.datasets
-                      .filter(d => d.name.startsWith("E2E Latency"))
-                      .map(d => ({
-                        label: d.name,
-                        data: d.data,
-                      }))),
-                  }}
-                  className="w-full aspect-[3/2]"
-                />
-              </Card>
+          {/* 指标数据 */}
+          {metricsData && !loading && !error && (
+            <div className="space-y-6">
+              {/* 吞吐量图表 */}
+              {throughputDatasets.length > 0 && chartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      吞吐量指标
+                    </CardTitle>
+                    <CardDescription>
+                      过去 {timeRange} 分钟的吞吐量数据趋势
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="time" 
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip />
+                          <Legend />
+                          {throughputDatasets.map((dataset, index) => (
+                            <Line
+                              key={dataset.name}
+                              type="monotone"
+                              dataKey={dataset.name}
+                              stroke={colors[index % colors.length]}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">状态</h3>
-                <LineChart
-                  data={{
-                    labels: metricsData.dates,
-                    datasets: createChartConfig(metricsData.datasets
-                      .filter(d => d.name.startsWith("State"))
-                      .map(d => ({
-                        label: d.name,
-                        data: d.data, 
-                      }))),
-                  }}
-                  className="w-full aspect-[3/2]"
-                />
+              {/* 延迟指标图表 */}
+              {latencyDatasets.length > 0 && chartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Timer className="h-5 w-5" />
+                      延迟指标
+                    </CardTitle>
+                    <CardDescription>
+                      过去 {timeRange} 分钟的延迟数据趋势（包括帧解码、推理和端到端延迟）
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="time" 
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip />
+                          <Legend />
+                          {latencyDatasets.map((dataset, index) => (
+                            <Line
+                              key={dataset.name}
+                              type="monotone"
+                              dataKey={dataset.name}
+                              stroke={colors[index % colors.length]}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 状态时间线图表 */}
+              {stateDatasets.length > 0 && stateChartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="h-5 w-5" />
+                      状态时间线
+                    </CardTitle>
+                    <CardDescription>
+                      过去 {timeRange} 分钟的Pipeline组件状态变化
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={stateChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="time" 
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 12 }}
+                            domain={[0, 8]}
+                            tickFormatter={(value) => {
+                              switch (value) {
+                                case 0: return 'NOT_STARTED'
+                                case 1: return 'INITIALISING'
+                                case 2: return 'RESTARTING'
+                                case 3: return 'RUNNING'
+                                case 4: return 'PAUSED'
+                                case 5: return 'MUTED'
+                                case 6: return 'TERMINATING'
+                                case 7: return 'ENDED'
+                                case 8: return 'ERROR'
+                                default: return ''
+                              }
+                            }}
+                          />
+                          <Tooltip content={<StateTooltip />} />
+                          <Legend />
+                          {stateDatasets.map((dataset, index) => (
+                            <Line
+                              key={dataset.name}
+                              type="stepAfter"
+                              dataKey={dataset.name}
+                              stroke={colors[index % colors.length]}
+                              strokeWidth={3}
+                              dot={{ r: 4 }}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge variant="outline" className="bg-gray-100">
+                        <div className="w-3 h-3 rounded-full bg-gray-500 mr-1"></div>
+                        NOT_STARTED
+                      </Badge>
+                      <Badge variant="outline" className="bg-blue-100">
+                        <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
+                        INITIALISING
+                      </Badge>
+                      <Badge variant="outline" className="bg-orange-100">
+                        <div className="w-3 h-3 rounded-full bg-orange-500 mr-1"></div>
+                        RESTARTING
+                      </Badge>
+                      <Badge variant="outline" className="bg-green-100">
+                        <div className="w-3 h-3 rounded-full bg-green-500 mr-1"></div>
+                        RUNNING
+                      </Badge>
+                      <Badge variant="outline" className="bg-yellow-100">
+                        <div className="w-3 h-3 rounded-full bg-yellow-500 mr-1"></div>
+                        PAUSED
+                      </Badge>
+                      <Badge variant="outline" className="bg-purple-100">
+                        <div className="w-3 h-3 rounded-full bg-purple-500 mr-1"></div>
+                        MUTED
+                      </Badge>
+                      <Badge variant="outline" className="bg-pink-100">
+                        <div className="w-3 h-3 rounded-full bg-pink-500 mr-1"></div>
+                        TERMINATING
+                      </Badge>
+                      <Badge variant="outline" className="bg-slate-100">
+                        <div className="w-3 h-3 rounded-full bg-slate-500 mr-1"></div>
+                        ENDED
+                      </Badge>
+                      <Badge variant="outline" className="bg-red-100">
+                        <div className="w-3 h-3 rounded-full bg-red-500 mr-1"></div>
+                        ERROR
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 其他数值指标图表 */}
+              {otherNumericDatasets.length > 0 && chartData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="h-5 w-5" />
+                      其他性能指标
+                    </CardTitle>
+                    <CardDescription>
+                      过去 {timeRange} 分钟的其他性能数据趋势
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="time" 
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip />
+                          <Legend />
+                          {otherNumericDatasets.map((dataset, index) => (
+                            <Line
+                              key={dataset.name}
+                              type="monotone"
+                              dataKey={dataset.name}
+                              stroke={colors[index % colors.length]}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 数据统计 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>数据统计</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {metricsData.dates.length}
+                      </div>
+                      <div className="text-sm text-muted-foreground">数据点</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-600">
+                        {throughputDatasets.length}
+                      </div>
+                      <div className="text-sm text-muted-foreground">吞吐量指标</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {latencyDatasets.length}
+                      </div>
+                      <div className="text-sm text-muted-foreground">延迟指标</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {stateDatasets.length}
+                      </div>
+                      <div className="text-sm text-muted-foreground">状态指标</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-600">
+                        {timeRange}min
+                      </div>
+                      <div className="text-sm text-muted-foreground">时间范围</div>
+                    </div>
+                  </div>
+                </CardContent>
               </Card>
             </div>
-          ) : null}
+          )}
+
+          {/* 无数据状态 */}
+          {metricsData && !loading && !error && chartData.length === 0 && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">暂无指标数据</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    所选时间范围内没有找到指标数据
+                  </p>
+                  <Button onClick={fetchMetrics} size="sm">
+                    重新加载
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 } 

@@ -1,12 +1,16 @@
 {
-  "name": "inference-landing",
+  "name": "coral-inference-dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "copy-static": "mkdir -p out/_next/static && cp -r .next/static/* out/_next/static/ 2>/dev/null || true",
+    "generate-static": "mkdir -p out/static && cp -r out/_next/static/* out/static/ 2>/dev/null || true",
+    "test-static": "node test-static.js",
+    "clean": "rm -rf .next out"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.14",
@@ -14,6 +18,8 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.1.1",
+    "@radix-ui/react-tabs": "^1.1.1",
     "chart.js": "^4.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -25,18 +31,18 @@
     "react-day-picker": "^9.7.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.0.2",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "autoprefixer": "^10.0.1",
+    "autoprefixer": "^10.4.21",
     "eslint": "^8",
     "eslint-config-next": "14.1.0",
-    "postcss": "^8",
-    "tailwindcss": "^4",
+    "postcss": "^8.5.6",
     "typescript": "^5"
   }
 }

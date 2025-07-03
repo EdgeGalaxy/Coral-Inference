@@ -33,8 +33,34 @@ echo "Starting web.py service..."
 eval "ENABLE_STREAM_API=$ENABLE_STREAM_API uvicorn web:app --host $HOST --port $PORT $LOG_OUTPUT &"
 WEB_PID=$!
 
+# 优雅关闭函数
+graceful_shutdown() {
+    echo "Received termination signal. Starting graceful shutdown..."
+    
+    # 尝试刷新监控器缓存
+    echo "Attempting to flush monitor cache..."
+    if curl -s -X POST "http://localhost:$PORT/monitor/flush-cache" > /dev/null 2>&1; then
+        echo "Monitor cache flushed successfully"
+    else
+        echo "Failed to flush monitor cache, continuing with shutdown..."
+    fi
+    
+    # 等待一小段时间让缓存刷新完成
+    sleep 2
+    
+    # 关闭服务
+    echo "Shutting down services..."
+    kill $START_PID $WEB_PID
+    
+    # 等待进程结束
+    wait $START_PID $WEB_PID 2>/dev/null
+    
+    echo "Graceful shutdown completed"
+    exit 0
+}
+
 # 捕获终止信号
-trap 'echo "Received termination signal. Shutting down services..."; kill $START_PID $WEB_PID; exit 0' SIGTERM SIGINT
+trap 'graceful_shutdown' SIGTERM SIGINT
 
 # 保持容器运行并等待信号
 wait $START_PID $WEB_PID 

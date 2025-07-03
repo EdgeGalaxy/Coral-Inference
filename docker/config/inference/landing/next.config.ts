@@ -1,8 +1,8 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // 静态导出配置
   output: 'export',
-};
+}
 
-export default nextConfig;
+export default nextConfig 

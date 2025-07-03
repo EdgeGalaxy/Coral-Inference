@@ -80,6 +80,14 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
                 status_interval = float(os.environ.get("PIPELINE_STATUS_INTERVAL", "1"))
                 save_interval_minutes = int(os.environ.get("PIPELINE_SAVE_INTERVAL_MINUTES", "5"))
 
+                # 结果缓存配置
+                results_batch_size = int(os.environ.get("PIPELINE_RESULTS_BATCH_SIZE", "10"))
+                results_flush_interval = float(os.environ.get("PIPELINE_RESULTS_FLUSH_INTERVAL", "30"))
+                
+                # 磁盘使用监控配置
+                max_size_gb = float(os.environ.get("PIPELINE_MAX_SIZE_GB", "10"))
+                size_check_interval = float(os.environ.get("PIPELINE_SIZE_CHECK_INTERVAL", "300"))
+
                 monitor = await setup_monitor(
                     stream_manager_client,
                     pipeline_cache,
@@ -88,11 +96,30 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
                     max_days,
                     cleanup_interval,
                     status_interval,
-                    save_interval_minutes
+                    save_interval_minutes,
+                    results_batch_size,
+                    results_flush_interval,
+                    max_size_gb,
+                    size_check_interval
                 )
 
                 app.state.monitor = monitor
                 break
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """应用程序关闭时的清理工作"""
+        logger.info("应用程序正在关闭，开始清理资源...")
+        
+        # 停止监控器并刷新缓存
+        if hasattr(app.state, 'monitor') and app.state.monitor:
+            try:
+                await app.state.monitor.stop_async()
+                logger.info("监控器已成功停止并刷新缓存")
+            except Exception as e:
+                logger.error(f"停止监控器时发生错误: {e}")
+        
+        logger.info("应用程序清理完成")
 
     @app.post(
         "/inference_pipelines/{pipeline_id}/offer",
@@ -204,6 +231,78 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         except Exception as e:
             logger.error(f"获取Pipeline指标数据时出错: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/monitor/flush-cache",
+        summary="手动刷新监控器缓存",
+        description="手动将监控器缓存中的数据刷新到文件系统"
+    )
+    @with_route_exceptions
+    async def flush_monitor_cache(monitor: PipelineMonitor = Depends(get_monitor)):
+        """手动刷新监控器缓存"""
+        try:
+            await monitor.flush_cache()
+            return {"status": "success", "message": "缓存数据已成功刷新到文件"}
+        except Exception as e:
+            logger.error(f"手动刷新缓存时出错: {e}")
+            raise HTTPException(status_code=500, detail=f"刷新缓存失败: {str(e)}")
+
+    @app.get(
+        "/monitor/status",
+        summary="获取监控器状态",
+        description="获取当前监控器的运行状态"
+    )
+    @with_route_exceptions
+    async def get_monitor_status(monitor: PipelineMonitor = Depends(get_monitor)):
+        """获取监控器状态"""
+        try:
+            return {
+                "status": "success",
+                "data": {
+                    "running": monitor.running,
+                    "output_dir": str(monitor.output_dir),
+                    "poll_interval": monitor.poll_interval,
+                    "pipeline_count": len(monitor.pipeline_ids_mapper),
+                    "cached_metrics_count": sum(len(metrics) for metrics in monitor.metrics_collector.metrics_cache.values()),
+                    "cached_results_count": sum(len(results) for results in monitor.results_collector.results_cache.values())
+                }
+            }
+        except Exception as e:
+            logger.error(f"获取监控器状态时出错: {e}")
+            raise HTTPException(status_code=500, detail=f"获取状态失败: {str(e)}")
+
+    @app.get(
+        "/monitor/disk-usage",
+        summary="获取磁盘使用状态",
+        description="获取当前监控器的磁盘使用情况"
+    )
+    @with_route_exceptions
+    async def get_disk_usage(monitor: PipelineMonitor = Depends(get_monitor)):
+        """获取磁盘使用状态"""
+        try:
+            disk_info = await monitor.cleanup_manager.get_disk_usage_info()
+            return {
+                "status": "success",
+                "data": disk_info
+            }
+        except Exception as e:
+            logger.error(f"获取磁盘使用状态时出错: {e}")
+            raise HTTPException(status_code=500, detail=f"获取磁盘使用状态失败: {str(e)}")
+
+    @app.post(
+        "/monitor/cleanup",
+        summary="手动触发磁盘清理",
+        description="手动触发磁盘清理，根据磁盘使用情况删除旧的结果文件"
+    )
+    @with_route_exceptions
+    async def trigger_cleanup(monitor: PipelineMonitor = Depends(get_monitor)):
+        """手动触发磁盘清理"""
+        try:
+            await monitor.cleanup_manager.check_disk_usage_and_cleanup()
+            return {"status": "success", "message": "磁盘清理已完成"}
+        except Exception as e:
+            logger.error(f"手动触发磁盘清理时出错: {e}")
+            raise HTTPException(status_code=500, detail=f"磁盘清理失败: {str(e)}")
 
     app.add_middleware(HookPipelineMiddleware, pipeline_cache=pipeline_cache)
 
