@@ -737,7 +737,7 @@ class PipelineMonitor:
             if pipeline_id in self.pipeline_ids_mapper:
                 pipeline_ids_mapper[pipeline_id] = self.pipeline_ids_mapper[pipeline_id]
                 continue
-            restore_pipeline_id = self.pipeline_cache.get_restore_pipeline_id(pipeline_id)
+            restore_pipeline_id = self.pipeline_cache.get_restore_pipeline_id(pipeline_id)['pipeline_id']
             if restore_pipeline_id is None:
                 logger.warning(f"Monitor Pipeline {pipeline_id} not found in cache")
                 continue

@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { pipelineApi, apiUtils } from '@/lib/api'
-import { Play, Square, Video, AlertCircle, Loader2, Wifi, WifiOff } from 'lucide-react'
+import { Play, Square, Video, AlertCircle, Loader2, Wifi, WifiOff, Settings } from 'lucide-react'
 
 interface VideoStreamProps {
   pipelineId: string | null
@@ -16,6 +17,9 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [outputFields, setOutputFields] = useState<string[]>([])
+  const [selectedOutputField, setSelectedOutputField] = useState<string>('source_image')
+  const [loadingFields, setLoadingFields] = useState(false)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
@@ -40,6 +44,36 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
     setConnectionState('disconnected')
     setIsStreaming(false)
   }
+
+  // 获取Pipeline输出字段信息
+  useEffect(() => {
+    const fetchPipelineInfo = async () => {
+      if (!pipelineId) {
+        setOutputFields([])
+        setSelectedOutputField('source_image')
+        return
+      }
+
+      try {
+        setLoadingFields(true)
+        const response = await pipelineApi.getInfo(pipelineId)
+        const fields = response.data.parameters.output_image_fields || []
+        
+        // 确保有source_image选项
+        const allFields = ['source_image', ...fields.filter(field => field !== 'source_image')]
+        setOutputFields(allFields)
+        setSelectedOutputField('source_image')
+      } catch (error) {
+        console.error('获取Pipeline信息失败:', error)
+        setOutputFields(['source_image'])
+        setSelectedOutputField('source_image')
+      } finally {
+        setLoadingFields(false)
+      }
+    }
+
+    fetchPipelineInfo()
+  }, [pipelineId])
 
   // 创建WebRTC连接
   const createWebRTCConnection = async () => {
@@ -110,12 +144,22 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
         throw new Error('Pipeline ID为空')
       }
       
-      const response = await pipelineApi.createWebRTCOffer(pipelineId, {
+      // 构建请求参数
+      const offerRequest: any = {
         webrtc_offer: {
           sdp: offer.sdp!,
           type: 'offer'
         }
-      })
+      }
+      
+      // 如果选择的不是原视频，添加stream_output字段
+      if (selectedOutputField !== 'source_image') {
+        offerRequest.stream_output = [selectedOutputField]
+      }
+      
+      console.log('发送的offer请求:', offerRequest)
+      
+      const response = await pipelineApi.createWebRTCOffer(pipelineId, offerRequest)
       
       console.log('收到后端SDP Answer:', response)
       
@@ -225,6 +269,37 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
           </div>
         </div>
 
+        {/* 输出字段选择 */}
+        {pipelineId && outputFields.length > 0 && (
+          <div className="p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Settings className="h-4 w-4" />
+              <span className="text-sm font-medium">视频输出选择:</span>
+            </div>
+            <Select 
+              value={selectedOutputField} 
+              onValueChange={setSelectedOutputField}
+              disabled={isStreaming || loadingFields}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择输出类型" />
+              </SelectTrigger>
+              <SelectContent>
+                {outputFields.map((field) => (
+                  <SelectItem key={field} value={field}>
+                    {field === 'source_image' ? '原视频' : field}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isStreaming && (
+              <p className="text-xs text-muted-foreground mt-1">
+                流传输时无法更改输出类型，请先停止播放
+              </p>
+            )}
+          </div>
+        )}
+
         {/* 视频容器 */}
         <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
           <video
@@ -310,6 +385,11 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
           <div>• 需要Pipeline处于运行状态</div>
           {pipelineId && (
             <div>• 当前Pipeline: <code className="bg-gray-100 px-1 rounded">{pipelineId}</code></div>
+          )}
+          {outputFields.length > 0 && (
+            <div>• 当前输出类型: <code className="bg-gray-100 px-1 rounded">
+              {selectedOutputField === 'source_image' ? '原视频' : selectedOutputField}
+            </code></div>
           )}
         </div>
       </CardContent>

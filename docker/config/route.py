@@ -129,10 +129,35 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     )
     @with_route_exceptions
     async def initialize_offer(pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload) -> CommandResponse:
-        pipeline_id = pipeline_cache.get(pipeline_id)
+        pipeline_id = pipeline_cache.get(pipeline_id)['restore_pipeline_id']
         if pipeline_id is None:
             raise HTTPException(status_code=404, detail="Pipeline not found")
         return await stream_manager_client.offer(pipeline_id=pipeline_id, offer_request=request)
+
+    @app.get(
+        "/inference_pipelines/{pipeline_id}/info",
+        summary="获取Pipeline信息",
+        description="获取指定Pipeline的详细信息，包括参数配置"
+    )
+    @with_route_exceptions
+    async def get_pipeline_info(pipeline_id: str):
+        """获取Pipeline信息"""
+        try:
+            pipeline_info = pipeline_cache.get(pipeline_id)
+            if pipeline_info is None:
+                raise HTTPException(status_code=404, detail="Pipeline not found")
+            
+            return {
+                "status": "success",
+                "data": {
+                    "pipeline_id": pipeline_id,
+                    "restore_pipeline_id": pipeline_info["restore_pipeline_id"],
+                    "parameters": pipeline_info["parameters"]
+                }
+            }
+        except Exception as e:
+            logger.error(f"获取Pipeline信息时出错: {e}")
+            raise HTTPException(status_code=500, detail=f"获取Pipeline信息失败: {str(e)}")
 
     @app.get(
         "/inference_pipelines/{pipeline_id}/metrics",
@@ -316,7 +341,7 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
 
     app.mount(
         "/",
-        StaticFiles(directory="./inference/landing/out", html=True),
+        StaticFiles(directory="./inference/landing/dist", html=True),
         name="coral_root",
     )
 

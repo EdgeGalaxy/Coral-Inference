@@ -3,7 +3,7 @@ import json
 import time
 import sqlite3
 import asyncio
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Tuple
 
 from inference.core.env import MODEL_CACHE_DIR
 from inference.core.utils.sqlite_wrapper import SQLiteWrapper
@@ -28,6 +28,7 @@ class PipelineCache(SQLiteWrapper):
         self._col_pipeline_id = "pipeline_id"
         self._col_restore_pipeline_id = "restore_pipeline_id"
         self._col_payload_name = "payload"
+        self._col_parameters = "parameters"
         self._col_updated_at = "updated_at"
         self._col_created_at = "created_at"
 
@@ -40,6 +41,7 @@ class PipelineCache(SQLiteWrapper):
                 self._col_payload_name: "TEXT NOT NULL",
                 self._col_pipeline_id: "CHAR(36) NOT NULL",
                 self._col_restore_pipeline_id: "CHAR(36) NOT NULL",
+                self._col_parameters: "TEXT NOT NULL",
                 self._col_updated_at: "INTEGER NOT NULL",
                 self._col_created_at: "INTEGER NOT NULL",
             },
@@ -50,15 +52,18 @@ class PipelineCache(SQLiteWrapper):
         self,
         pipeline_id: str,
         payload: Any,
+        parameters: Dict[str, Any],
         sqlite_connection: Optional[sqlite3.Connection] = None,
     ):
         payload_str = json.dumps(payload)
+        parameters_str = json.dumps(parameters)
         try:
             self.insert(
                 row={
                     self._col_pipeline_id: pipeline_id,
                     self._col_restore_pipeline_id: pipeline_id,
                     self._col_payload_name: payload_str,
+                    self._col_parameters: parameters_str,
                     self._col_updated_at: int(time.time()),
                     self._col_created_at: int(time.time()),
                 },
@@ -88,10 +93,13 @@ class PipelineCache(SQLiteWrapper):
                 logger.warning(f"Pipeline {pipeline_id} not found in cache")
         return list(set(_pipeline_ids + list(pipeline_id_mapper.values())))
 
-    def get(self, pipeline_id: str) -> Optional[str]:
+    def get(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
         rows = self.select()
         pipeline_id_mapper = {
-            r[self._col_pipeline_id]: r[self._col_restore_pipeline_id] for r in rows
+            r[self._col_pipeline_id]: {
+                "restore_pipeline_id": r[self._col_restore_pipeline_id],
+                "parameters": json.loads(r[self._col_parameters])
+            } for r in rows
         }
         if pipeline_id in pipeline_id_mapper:
             return pipeline_id_mapper[pipeline_id]
@@ -99,10 +107,13 @@ class PipelineCache(SQLiteWrapper):
             logger.warning(f"Pipeline {pipeline_id} not found in cache")
             return None
     
-    def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[str]:   
+    def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[Dict[str, Any]]:   
         rows = self.select()
         pipeline_id_mapper = {
-            r[self._col_restore_pipeline_id]: r[self._col_pipeline_id] for r in rows
+            r[self._col_restore_pipeline_id]: {
+                "pipeline_id": r[self._col_pipeline_id],
+                "parameters": json.loads(r[self._col_parameters])
+            } for r in rows
         }
         return pipeline_id_mapper.get(pipeline_id)
 

@@ -64,7 +64,10 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
             return response
         data = await self._process_response_content(response)
         pipeline_id = data.get("context", {}).get("pipeline_id")
-        self.pipeline_cache.create(pipeline_id, request_data)
+        print(request_data)
+        output_image_fields = request_data.get("processing_configuration", {}) \
+            .pop("workflows_parameters", {}).pop("output_image_fields", []) + ['source_image']
+        self.pipeline_cache.create(pipeline_id, request_data, {"output_image_fields": output_image_fields})
 
         return await self._create_response(
             data, response, isinstance(response, StreamingResponse)
@@ -76,7 +79,7 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
         transformed_id = self.pipeline_cache.get(pipeline_id)
         if transformed_id:
             request.scope["path"] = request.url.path.replace(
-                pipeline_id, transformed_id
+                pipeline_id, transformed_id['restore_pipeline_id']
             )
             logger.info(
                 f"Transformed pipeline id from {pipeline_id} to {transformed_id}"

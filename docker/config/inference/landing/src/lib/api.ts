@@ -53,6 +53,18 @@ export interface PipelineStatusResponse {
   }
 }
 
+export interface PipelineInfoResponse {
+  status: string
+  data: {
+    pipeline_id: string
+    restore_pipeline_id: string
+    parameters: {
+      output_image_fields?: string[]
+      [key: string]: any
+    }
+  }
+}
+
 // API错误处理
 export class ApiError extends Error {
   constructor(
@@ -125,10 +137,23 @@ export const pipelineApi = {
         id,
         status: 'running' as const // 默认状态，实际状态需要通过其他接口获取
       }))
-      
+
       return pipelines
     } catch (error) {
       console.error('获取Pipeline列表失败:', error)
+      throw error
+    }
+  },
+
+  // 获取Pipeline信息
+  async getInfo(pipelineId: string): Promise<PipelineInfoResponse> {
+    try {
+      const response = await apiRequest<PipelineInfoResponse>(
+        `/inference_pipelines/${pipelineId}/info`
+      )
+      return response
+    } catch (error) {
+      console.error('获取Pipeline信息失败:', error)
       throw error
     }
   },
