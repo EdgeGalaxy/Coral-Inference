@@ -330,7 +330,8 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                               dataKey={dataset.name}
                               stroke={colors[index % colors.length]}
                               strokeWidth={2}
-                              dot={{ r: 3 }}
+                              dot={false}
+                              connectNulls={false}
                             />
                           ))}
                         </LineChart>
@@ -374,7 +375,8 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                               dataKey={dataset.name}
                               stroke={colors[index % colors.length]}
                               strokeWidth={2}
-                              dot={{ r: 3 }}
+                              dot={false}
+                              connectNulls={false}
                             />
                           ))}
                         </LineChart>
@@ -434,8 +436,9 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                               type="stepAfter"
                               dataKey={dataset.name}
                               stroke={colors[index % colors.length]}
-                              strokeWidth={3}
-                              dot={{ r: 4 }}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              connectNulls={false}
                             />
                           ))}
                         </LineChart>
@@ -517,7 +520,8 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                               dataKey={dataset.name}
                               stroke={colors[index % colors.length]}
                               strokeWidth={2}
-                              dot={{ r: 3 }}
+                              dot={false}
+                              connectNulls={false}
                             />
                           ))}
                         </LineChart>

@@ -2,10 +2,14 @@
 // 环境变量配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
 
+// 状态枚举
+export type PipelineStatus = 'pending' | 'running' | 'warning' | 'failure' | 'muted' | 'stopped' | 'not_found' | 'timeout'
+
 // 类型定义
 export interface Pipeline {
   id: string
-  status: 'running' | 'stopped' | 'paused' | 'error'
+  name: string
+  status: PipelineStatus
 }
 
 export interface MetricsResponse {
@@ -129,13 +133,18 @@ export const pipelineApi = {
     try {
       const response = await apiRequest<{
         pipelines: string[]
-        fixed_pipelines: string[]
+        fixed_pipelines: Array<{
+          pipeline_id: string
+          pipeline_name: string
+          created_at: number
+        }>
       }>('/inference_pipelines/list')
       
       // 转换为前端需要的格式
-      const pipelines: Pipeline[] = response.fixed_pipelines.map(id => ({
-        id,
-        status: 'running' as const // 默认状态，实际状态需要通过其他接口获取
+      const pipelines: Pipeline[] = response.fixed_pipelines.map(pipelineInfo => ({
+        id: pipelineInfo.pipeline_id,
+        name: pipelineInfo.pipeline_name,
+        status: 'pending' as const // 默认状态，实际状态需要通过其他接口获取
       }))
 
       return pipelines
@@ -177,6 +186,46 @@ export const pipelineApi = {
       return response
     } catch (error) {
       console.error('获取Pipeline指标失败:', error)
+      throw error
+    }
+  },
+
+  // 获取带有实际状态的Pipeline列表
+  async listWithStatus(): Promise<Pipeline[]> {
+    try {
+      // 首先获取基础的Pipeline列表
+      const pipelines = await this.list()
+      
+      // 并行获取每个Pipeline的状态
+      const statusPromises = pipelines.map(async (pipeline: Pipeline) => {
+        try {
+          const statusResponse = await monitorApi.getStatus(pipeline.id)
+          const calculatedStatus = statusUtils.calculatePipelineStatus(
+            statusResponse.status,
+            statusResponse.report
+          )
+          return {
+            ...pipeline,
+            status: calculatedStatus
+          }
+        } catch (error) {
+          console.error(`获取Pipeline ${pipeline.id} 状态失败:`, error)
+          // 根据错误类型设置状态
+          if (error instanceof ApiError) {
+            if (error.status === 404) {
+              return { ...pipeline, status: 'not_found' as PipelineStatus }
+            } else if (error.status === 0) {
+              return { ...pipeline, status: 'timeout' as PipelineStatus }
+            }
+          }
+          return { ...pipeline, status: 'failure' as PipelineStatus }
+        }
+      })
+      
+      const pipelinesWithStatus = await Promise.all(statusPromises)
+      return pipelinesWithStatus
+    } catch (error) {
+      console.error('获取Pipeline列表及状态失败:', error)
       throw error
     }
   },
@@ -296,6 +345,43 @@ export const monitorApi = {
       throw error
     }
   },
+}
+
+// 状态计算工具函数
+export const statusUtils = {
+  // 计算Pipeline状态 - 参考后端deployments.py的get_status方法
+  calculatePipelineStatus(status: string, report: any): PipelineStatus {
+    if (status === "failure") {
+      return 'failure'
+    }
+    
+    if (status === "not_found") {
+      return 'not_found'
+    }
+    
+    if (status === "success") {
+      if (!report) {
+        return 'pending'
+      }
+      
+      const sourcesMetadata = report['sources_metadata']
+      if (!sourcesMetadata || !Array.isArray(sourcesMetadata)) {
+        return 'pending'
+      }
+      
+      const sourceStates = sourcesMetadata.map(source => source['state'])
+      
+      if (sourceStates.every(state => state === "RUNNING")) {
+        return 'running'
+      } else if (sourceStates.every(state => state === "MUTED")) {
+        return 'muted'
+      } else {
+        return 'warning'
+      }
+    }
+    
+    return 'pending'
+  }
 }
 
 // 工具函数

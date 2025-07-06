@@ -47,8 +47,7 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
             return response
         
         data = await self._process_response_content(response)
-        pipeline_ids = data.get("pipelines", [])
-        data["fixed_pipelines"] = self.pipeline_cache.list(pipeline_ids)
+        data["fixed_pipelines"] = self.pipeline_cache.list()
 
         return await self._create_response(
             data, response, isinstance(response, StreamingResponse)
@@ -66,8 +65,10 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
         pipeline_id = data.get("context", {}).get("pipeline_id")
         print(request_data)
         output_image_fields = request_data.get("processing_configuration", {}) \
-            .pop("workflows_parameters", {}).pop("output_image_fields", []) + ['source_image']
-        self.pipeline_cache.create(pipeline_id, request_data, {"output_image_fields": output_image_fields})
+            .get("workflows_parameters", {}).pop("output_image_fields", []) + ['source_image']
+        pipeline_name = request_data.get("processing_configuration", {}) \
+            .get("workflows_parameters", {}).pop("pipeline_name", "")
+        self.pipeline_cache.create(pipeline_id, pipeline_name, request_data, {"output_image_fields": output_image_fields})
 
         return await self._create_response(
             data, response, isinstance(response, StreamingResponse)

@@ -43,14 +43,27 @@ export const getStatusColor = (status: string): string => {
   switch (status?.toLowerCase()) {
     case 'running':
       return 'bg-green-500'
+    case 'pending':
+      return 'bg-blue-500'
+    case 'warning':
+      return 'bg-yellow-500'
+    case 'failure':
+      return 'bg-red-600'
+    case 'muted':
+      return 'bg-gray-500'
     case 'stopped':
       return 'bg-red-500'
+    case 'not_found':
+      return 'bg-red-400'
+    case 'timeout':
+      return 'bg-orange-500'
+    // 保持向后兼容
     case 'paused':
       return 'bg-yellow-500'
     case 'error':
       return 'bg-red-600'
     default:
-      return 'bg-gray-500'
+      return 'bg-gray-400'
   }
 }
 
@@ -61,8 +74,21 @@ export const getStatusTextColor = (status: string): string => {
   switch (status?.toLowerCase()) {
     case 'running':
       return 'text-green-600'
+    case 'pending':
+      return 'text-blue-600'
+    case 'warning':
+      return 'text-yellow-600'
+    case 'failure':
+      return 'text-red-700'
+    case 'muted':
+      return 'text-gray-600'
     case 'stopped':
       return 'text-red-600'
+    case 'not_found':
+      return 'text-red-500'
+    case 'timeout':
+      return 'text-orange-600'
+    // 保持向后兼容
     case 'paused':
       return 'text-yellow-600'
     case 'error':
@@ -83,6 +109,37 @@ export function debounce<T extends (...args: any[]) => any>(
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
+  }
+}
+
+/**
+ * 获取状态显示名称
+ */
+export const getStatusDisplayName = (status: string): string => {
+  switch (status?.toLowerCase()) {
+    case 'running':
+      return '运行中'
+    case 'pending':
+      return '等待中'
+    case 'warning':
+      return '警告'
+    case 'failure':
+      return '失败'
+    case 'muted':
+      return '静音'
+    case 'stopped':
+      return '已停止'
+    case 'not_found':
+      return '未找到'
+    case 'timeout':
+      return '超时'
+    // 保持向后兼容
+    case 'paused':
+      return '暂停'
+    case 'error':
+      return '错误'
+    default:
+      return '未知'
   }
 }
 

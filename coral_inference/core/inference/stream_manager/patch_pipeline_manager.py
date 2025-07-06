@@ -140,6 +140,8 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
                         return output.numpy_image
             return prediction[parsed_payload.stream_output[0]].numpy_image
         
+        # clear buffer
+        self._buffer_sink._webrtc_buffer.clear()
         asyncio.run_coroutine_threadsafe(process_video_frames(self._buffer_sink._webrtc_buffer, from_inference_queue, stop_event, get_video_frame), loop)
 
         # 将合并后的帧发送到WebRTC

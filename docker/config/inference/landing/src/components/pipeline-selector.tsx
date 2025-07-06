@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getStatusColor, getStatusTextColor } from '@/lib/utils'
+import { getStatusColor, getStatusTextColor, getStatusDisplayName } from '@/lib/utils'
 import { pipelineApi, apiUtils, Pipeline } from '@/lib/api'
 import { RefreshCw, Zap, Wifi, WifiOff } from 'lucide-react'
 
@@ -38,7 +38,7 @@ export function PipelineSelector({
       
       console.log('正在获取Pipeline列表...')
       
-      const pipelineList = await pipelineApi.list()
+      const pipelineList = await pipelineApi.listWithStatus()
       console.log('获取到Pipeline列表:', pipelineList)
       
       setPipelines(pipelineList)
@@ -90,7 +90,7 @@ export function PipelineSelector({
       if (isConnected) {
         await fetchPipelines()
       }
-    }, 10000) // 每10秒检查一次
+    }, 60000) // 每60秒检查一次
 
     return () => clearInterval(interval)
   }, [])
@@ -212,12 +212,12 @@ export function PipelineSelector({
             {pipelines.map((pipeline) => (
               <SelectItem key={pipeline.id} value={pipeline.id}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="font-medium">{pipeline.id}</span>
+                  <span className="font-medium">{pipeline.name || pipeline.id}</span>
                   <Badge
                     variant="secondary"
                     className={`ml-2 ${getStatusColor(pipeline.status)} ${getStatusTextColor(pipeline.status)}`}
                   >
-                    {pipeline.status}
+                    {getStatusDisplayName(pipeline.status)}
                   </Badge>
                 </div>
               </SelectItem>
@@ -237,21 +237,24 @@ export function PipelineSelector({
               </button>
             </div>
             <div className="mt-1 text-sm text-muted-foreground">
-              {selectedPipeline}
+              {pipelines.find(p => p.id === selectedPipeline)?.name || selectedPipeline}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              ID: {selectedPipeline}
             </div>
             {pipelines.find(p => p.id === selectedPipeline) && (
               <Badge
                 variant="secondary"
                 className={`mt-2 ${getStatusColor(pipelines.find(p => p.id === selectedPipeline)!.status)} ${getStatusTextColor(pipelines.find(p => p.id === selectedPipeline)!.status)}`}
               >
-                {pipelines.find(p => p.id === selectedPipeline)!.status}
+                {getStatusDisplayName(pipelines.find(p => p.id === selectedPipeline)!.status)}
               </Badge>
             )}
           </div>
         )}
 
         <div className="text-xs text-gray-500 text-center">
-          数据每10秒自动刷新
+          数据每60秒自动刷新
         </div>
       </CardContent>
     </Card>

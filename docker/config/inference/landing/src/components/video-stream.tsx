@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { pipelineApi, apiUtils } from '@/lib/api'
 import { Play, Square, Video, AlertCircle, Loader2, Wifi, WifiOff, Settings } from 'lucide-react'
 
@@ -20,6 +21,7 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
   const [outputFields, setOutputFields] = useState<string[]>([])
   const [selectedOutputField, setSelectedOutputField] = useState<string>('source_image')
   const [loadingFields, setLoadingFields] = useState(false)
+  const [webFps, setWebFps] = useState<number>(0)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
@@ -157,6 +159,11 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
         offerRequest.stream_output = [selectedOutputField]
       }
       
+      // 如果web_fps大于0，添加web_fps参数
+      if (webFps > 0) {
+        offerRequest.web_fps = webFps
+      }
+      
       console.log('发送的offer请求:', offerRequest)
       
       const response = await pipelineApi.createWebRTCOffer(pipelineId, offerRequest)
@@ -254,48 +261,77 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* 连接状态 */}
-        <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${getConnectionStatusColor()}`} />
-            <span className="text-sm font-medium">连接状态:</span>
-            <span className="text-sm">{getConnectionStatusText()}</span>
+        {/* 控制面板 - 一行显示 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-3 bg-muted rounded-lg">
+          {/* 连接状态 */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${getConnectionStatusColor()}`} />
+              <span className="text-sm font-medium">连接状态</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{getConnectionStatusText()}</span>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {connectionState === 'connected' && <Wifi className="h-4 w-4 text-green-600" />}
+              {connectionState === 'failed' && <WifiOff className="h-4 w-4 text-red-600" />}
+            </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {connectionState === 'connected' && <Wifi className="h-4 w-4 text-green-600" />}
-            {connectionState === 'failed' && <WifiOff className="h-4 w-4 text-red-600" />}
+
+          {/* 视频输出选择 */}
+          {pipelineId && outputFields.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                <span className="text-sm font-medium">视频输出</span>
+              </div>
+              <Select 
+                value={selectedOutputField} 
+                onValueChange={setSelectedOutputField}
+                disabled={isStreaming || loadingFields}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择输出类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {outputFields.map((field) => (
+                    <SelectItem key={field} value={field}>
+                      {field === 'source_image' ? '原视频' : field}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* 帧率设置 */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              <span className="text-sm font-medium">帧率设置</span>
+            </div>
+            <Input
+              id="web-fps"
+              type="number"
+              min="0"
+              max="60"
+              value={webFps}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWebFps(Number(e.target.value))}
+              disabled={isStreaming}
+              placeholder="输入帧率，0为默认"
+              className="w-full"
+            />
           </div>
         </div>
 
-        {/* 输出字段选择 */}
-        {pipelineId && outputFields.length > 0 && (
-          <div className="p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Settings className="h-4 w-4" />
-              <span className="text-sm font-medium">视频输出选择:</span>
-            </div>
-            <Select 
-              value={selectedOutputField} 
-              onValueChange={setSelectedOutputField}
-              disabled={isStreaming || loadingFields}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择输出类型" />
-              </SelectTrigger>
-              <SelectContent>
-                {outputFields.map((field) => (
-                  <SelectItem key={field} value={field}>
-                    {field === 'source_image' ? '原视频' : field}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* 提示信息 */}
+        {(isStreaming || (pipelineId && outputFields.length > 0)) && (
+          <div className="text-xs text-muted-foreground space-y-1 px-3">
             {isStreaming && (
-              <p className="text-xs text-muted-foreground mt-1">
-                流传输时无法更改输出类型，请先停止播放
-              </p>
+              <p>• 流传输时无法更改设置，请先停止播放</p>
+            )}
+            <p>• 帧率设置: 0表示使用默认帧率，建议范围1-30</p>
+            {pipelineId && outputFields.length > 0 && (
+              <p>• 视频输出: 原视频为摄像头原始画面，其他为AI处理后的结果</p>
             )}
           </div>
         )}
@@ -390,6 +426,9 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
             <div>• 当前输出类型: <code className="bg-gray-100 px-1 rounded">
               {selectedOutputField === 'source_image' ? '原视频' : selectedOutputField}
             </code></div>
+          )}
+          {webFps > 0 && (
+            <div>• 当前帧率: <code className="bg-gray-100 px-1 rounded">{webFps} FPS</code></div>
           )}
         </div>
       </CardContent>

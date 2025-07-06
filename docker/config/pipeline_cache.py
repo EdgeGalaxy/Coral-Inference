@@ -28,6 +28,7 @@ class PipelineCache(SQLiteWrapper):
         self._col_pipeline_id = "pipeline_id"
         self._col_restore_pipeline_id = "restore_pipeline_id"
         self._col_payload_name = "payload"
+        self._col_pipeline_name = "pipeline_name"
         self._col_parameters = "parameters"
         self._col_updated_at = "updated_at"
         self._col_created_at = "created_at"
@@ -42,6 +43,7 @@ class PipelineCache(SQLiteWrapper):
                 self._col_pipeline_id: "CHAR(36) NOT NULL",
                 self._col_restore_pipeline_id: "CHAR(36) NOT NULL",
                 self._col_parameters: "TEXT NOT NULL",
+                self._col_pipeline_name: "TEXT NOT NULL",
                 self._col_updated_at: "INTEGER NOT NULL",
                 self._col_created_at: "INTEGER NOT NULL",
             },
@@ -51,6 +53,7 @@ class PipelineCache(SQLiteWrapper):
     def create(
         self,
         pipeline_id: str,
+        pipeline_name: str,
         payload: Any,
         parameters: Dict[str, Any],
         sqlite_connection: Optional[sqlite3.Connection] = None,
@@ -64,6 +67,7 @@ class PipelineCache(SQLiteWrapper):
                     self._col_restore_pipeline_id: pipeline_id,
                     self._col_payload_name: payload_str,
                     self._col_parameters: parameters_str,
+                    self._col_pipeline_name: pipeline_name,
                     self._col_updated_at: int(time.time()),
                     self._col_created_at: int(time.time()),
                 },
@@ -80,25 +84,24 @@ class PipelineCache(SQLiteWrapper):
         except Exception:
             return True
 
-    def list(self, pipeline_ids: List[str]) -> List[str]:
-        _pipeline_ids = []
+    def list(self) -> List[Dict[str, Any]]:
         rows = self.select()
         pipeline_id_mapper = {
-            r[self._col_restore_pipeline_id]: r[self._col_pipeline_id] for r in rows
+            r[self._col_restore_pipeline_id]: {
+                "pipeline_id": r[self._col_pipeline_id],
+                "pipeline_name": r[self._col_pipeline_name],
+                "created_at": r[self._col_created_at]
+            } for r in rows
         }
-        for pipeline_id in pipeline_ids:
-            if pipeline_id in pipeline_id_mapper:
-                _pipeline_ids.append(pipeline_id_mapper[pipeline_id])
-            else:
-                logger.warning(f"Pipeline {pipeline_id} not found in cache")
-        return list(set(_pipeline_ids + list(pipeline_id_mapper.values())))
+        return list(pipeline_id_mapper.values())
 
     def get(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
         rows = self.select()
         pipeline_id_mapper = {
             r[self._col_pipeline_id]: {
                 "restore_pipeline_id": r[self._col_restore_pipeline_id],
-                "parameters": json.loads(r[self._col_parameters])
+                "parameters": json.loads(r[self._col_parameters]),
+                "pipeline_name": r[self._col_pipeline_name]
             } for r in rows
         }
         if pipeline_id in pipeline_id_mapper:
@@ -112,7 +115,8 @@ class PipelineCache(SQLiteWrapper):
         pipeline_id_mapper = {
             r[self._col_restore_pipeline_id]: {
                 "pipeline_id": r[self._col_pipeline_id],
-                "parameters": json.loads(r[self._col_parameters])
+                "parameters": json.loads(r[self._col_parameters]),
+                "pipeline_name": r[self._col_pipeline_name]
             } for r in rows
         }
         return pipeline_id_mapper.get(pipeline_id)
