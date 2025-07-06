@@ -27,7 +27,7 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # 缓存层5: 安装基础依赖（不包括可选的GPU组）
-RUN poetry install --no-root --no-dev
+RUN poetry install --no-root
 
 # 缓存层6: 使用pip安装GPU版本的包，替换CPU版本
 RUN pip uninstall -y onnxruntime && \
