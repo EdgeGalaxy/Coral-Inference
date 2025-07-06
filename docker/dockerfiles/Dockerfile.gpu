@@ -1,5 +1,4 @@
-# Stage 1: Builder
-FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 as builder
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 
 
 WORKDIR /app
 
@@ -27,40 +26,19 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # 缓存层5: 安装基础依赖（不包括可选的GPU组）
-RUN poetry install --no-root
+RUN poetry install --no-root --group gpu
 
-# 缓存层6: 使用pip安装GPU版本的包，替换CPU版本
-RUN pip uninstall -y onnxruntime && \
-    pip install --no-cache-dir onnxruntime-gpu==1.21.0
 
-# 缓存层7: 安装inference-gpu包
-RUN pip install --no-cache-dir inference-gpu[http]
-
-# 缓存层8: 复制源代码（经常变化）
 COPY coral_inference /tmp/coral_inference
 
-# 缓存层9: 构建应用（代码变化时重新构建）
 RUN poetry build && \
     pip install --no-cache-dir dist/*.whl
 
-# Stage 2: Runtime
-FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 as runtime
 
-# 缓存层1: 安装运行时系统依赖（很少变化）
-RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    libxext6 \
-    libopencv-dev \
-    libgdal-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# 缓存层2: 复制Python环境（从builder阶段）
-COPY --from=builder /usr/local/lib/python3.10/dist-packages/ /usr/local/lib/python3.10/dist-packages/
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
-
-WORKDIR /workspace
+WORKDIR /app
 
 # 缓存层4: 复制配置文件（偶尔变化）
-COPY docker/config /workspace/
+COPY docker/config /app/
 
 # 缓存层5: 设置权限（配置文件变化时重新构建）
 RUN chmod +x ./entrypoint.sh
