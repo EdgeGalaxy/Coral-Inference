@@ -79,17 +79,13 @@ COPY --from=builder /usr/local/bin/ /usr/local/bin/
 # 缓存层4: 更新动态链接库（很少变化）
 RUN ldconfig
 
-# 缓存层5: 创建用户（很少变化）
-RUN groupadd -r coral && useradd -r -g coral coral
-
 WORKDIR /workspace
 
 # 缓存层6: 复制配置文件（偶尔变化）
 COPY docker/config /workspace/
 
 # 缓存层7: 设置权限（配置文件变化时重新构建）
-RUN chown -R coral:coral /workspace && \
-    chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 # Environment variables
 ENV VERSION_CHECK_MODE=continuous \
@@ -106,8 +102,5 @@ ENV VERSION_CHECK_MODE=continuous \
     ENABLE_WORKFLOWS_PROFILING=True \
     ENABLE_PROMETHEUS=True \
     CURRENT_INFERENCE_PLATFORM=rknn
-
-# Switch to non-root user
-USER coral
 
 ENTRYPOINT ["./entrypoint.sh"]

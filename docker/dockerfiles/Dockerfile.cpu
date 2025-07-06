@@ -54,17 +54,13 @@ RUN apt-get update -y \
 COPY --from=builder /usr/local/lib/python3.10/site-packages/ /usr/local/lib/python3.10/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
-# 缓存层3: 创建用户（很少变化）
-RUN groupadd -r coral && useradd -r -g coral coral
-
 WORKDIR /workspace
 
 # 缓存层4: 复制配置文件（偶尔变化）
 COPY docker/config /workspace/
 
 # 缓存层5: 设置权限（配置文件变化时重新构建）
-RUN chown -R coral:coral /workspace && \
-    chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 # Environment variables
 ENV VERSION_CHECK_MODE=continuous \
@@ -82,8 +78,5 @@ ENV VERSION_CHECK_MODE=continuous \
     ENABLE_PROMETHEUS=True \
     METRICS_ENABLED=False \
     CURRENT_INFERENCE_PLATFORM=onnx
-
-# Switch to non-root user
-USER coral
 
 ENTRYPOINT ["./entrypoint.sh"]
