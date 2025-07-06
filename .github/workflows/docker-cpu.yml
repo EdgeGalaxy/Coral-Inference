@@ -8,7 +8,11 @@ on:
   release:
     types: [created]
   push:
-    branches: [main]
+    branches:
+      - 'main'
+      - 'dev'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       force_push:

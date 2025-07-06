@@ -84,5 +84,4 @@ jobs:
           file: ${{ inputs.dockerfile-path }}
           cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
           cache-to: type=inline
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
+
