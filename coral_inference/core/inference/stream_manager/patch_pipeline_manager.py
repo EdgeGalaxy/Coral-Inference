@@ -110,27 +110,10 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
         def get_video_frame(
             prediction: Dict[str, WorkflowImageData], video_frame: VideoFrame
         ) -> None:
-            errors = []
             if not any(
                 isinstance(v, WorkflowImageData) for v in prediction.values()
             ) or not parsed_payload.stream_output:
-                errors.append("Visualisation blocks were not executed")
-                errors.append("or workflow was not configured to output visuals.")
-                errors.append(
-                    "Please try to adjust the scene so models detect objects"
-                )
-                errors.append("or stop preview, update workflow and try again.")
                 result_frame = video_frame.image.copy()
-                for row, error in enumerate(errors):
-                    result_frame = cv.putText(
-                        result_frame,
-                        error,
-                        (10, 20 + 30 * row),
-                        cv.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 0),
-                        2,
-                    )
                 return result_frame
             if parsed_payload.stream_output[0] not in prediction or not isinstance(
                 prediction[parsed_payload.stream_output[0]], WorkflowImageData

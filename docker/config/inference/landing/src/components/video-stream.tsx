@@ -161,7 +161,7 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
       
       // 如果web_fps大于0，添加web_fps参数
       if (webFps > 0) {
-        offerRequest.web_fps = webFps
+        offerRequest.webcam_fps = webFps
       }
       
       console.log('发送的offer请求:', offerRequest)
