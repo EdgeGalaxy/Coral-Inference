@@ -71,5 +71,12 @@ jobs:
           tags: ${{ steps.tags.outputs.TAGS }}
           platforms: ${{ inputs.platforms }}
           file: ${{ inputs.dockerfile-path }}
-          cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
-          cache-to: type=inline
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
+            type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1

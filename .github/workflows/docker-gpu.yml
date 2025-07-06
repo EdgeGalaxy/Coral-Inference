@@ -17,7 +17,7 @@ on:
         default: false
 
 jobs:
-  docker-rknn:
+  docker-gpu:
     uses: ./.github/workflows/reusable-docker-build.yml
     with:
       image-type: gpu
