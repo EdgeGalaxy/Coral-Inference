@@ -341,7 +341,7 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
 
     app.mount(
         "/",
-        StaticFiles(directory="./inference/landing/dist", html=True),
+        StaticFiles(directory="./inference/landing/out", html=True),
         name="coral_root",
     )
 
