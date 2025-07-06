@@ -38,7 +38,7 @@ RUN poetry build && \
 WORKDIR /app
 
 # 缓存层4: 复制配置文件（偶尔变化）
-COPY docker/config /app/
+COPY docker/config/* /app/
 
 # 缓存层5: 设置权限（配置文件变化时重新构建）
 RUN chmod +x ./entrypoint.sh

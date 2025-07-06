@@ -1,5 +1,5 @@
 # First stage: Install all dependencies
-FROM python:3.10 AS builder
+FROM python:3.10
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -36,7 +36,7 @@ RUN poetry build && \
 
 WORKDIR /app
 
-COPY docker/config /app/
+COPY docker/config/* /app/
 
 RUN chmod +x ./entrypoint.sh
 

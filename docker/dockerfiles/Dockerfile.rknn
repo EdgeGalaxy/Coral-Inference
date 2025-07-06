@@ -1,14 +1,18 @@
-# Stage 1: Get RKNN source（缓存 RKNN 源码获取）
 FROM ubuntu:22.04
 
-ARG RKNN_VERSION=2.3.2
+ARG RKNN_VERSION=1.6.0
 ARG DEBIAN_FRONTEND=noninteractive
-ENV RKNN_VERSION=${RKNN_VERSION}
 
 RUN apt update && apt install -y git && \
-    rm -rf /var/lib/apt/lists/*
-RUN git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
+    git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
 
+COPY /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
+COPY /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
+COPY /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-*.whl /
+
+RUN ldconfig
+
+# Install the python lite version of the toolkit
 RUN apt update -y && apt install -y \
     libxext6 \
     libopencv-dev \
@@ -20,45 +24,42 @@ RUN apt update -y && apt install -y \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /tmp/
-
-RUN pip install -U pip setuptools wheel poetry && \
-    poetry config virtualenvs.create false
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir poetry
 
 WORKDIR /tmp
 
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml poetry.lock /tmp/
 
-RUN poetry install --no-root && \
-    pip install /tmp/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl
+RUN poetry config virtualenvs.create false && \
+    poetry install -only-root && \
+    rm -rf /root/.local && \
+    rm -rf /root/.cache/pypoetry/artifacts && \
+    rm -rf /root/.cache/pypoetry/cache
 
-COPY coral_inference /tmp/coral_inference
-
-RUN poetry build && \
-    pip install dist/*.whl
-
-RUN ldconfig
+RUN pip install --no-cache-dir /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-*.whl && \
+    rm /rknn_toolkit_lite2-${RKNN_VERSION}-cp310-*.whl
 
 WORKDIR /app
 
-COPY docker/config /app/
+ADD docker/config/* /app
 
 RUN chmod +x ./entrypoint.sh
 
-# Environment variables
-ENV VERSION_CHECK_MODE=continuous \
-    PROJECT=coral-platform \
-    NUM_WORKERS=1 \
-    HOST=0.0.0.0 \
-    PORT=9001 \
-    WORKFLOWS_STEP_EXECUTION_MODE=local \
-    WORKFLOWS_MAX_CONCURRENT_STEPS=4 \
-    API_LOGGING_ENABLED=True \
-    CORE_MODEL_SAM2_ENABLED=False \
-    CORE_MODEL_OWLV2_ENABLED=False \
-    ENABLE_STREAM_API=True \
-    ENABLE_WORKFLOWS_PROFILING=True \
-    ENABLE_PROMETHEUS=True \
-    CURRENT_INFERENCE_PLATFORM=rknn
+ENV VERSION_CHECK_MODE=continuous
+ENV PROJECT=roboflow-platform
+ENV NUM_WORKERS=1
+ENV HOST=0.0.0.0
+ENV PORT=9001
+ENV WORKFLOWS_STEP_EXECUTION_MODE=local
+ENV WORKFLOWS_MAX_CONCURRENT_STEPS=4
+ENV API_LOGGING_ENABLED=True
+ENV CORE_MODEL_SAM2_ENABLED=False
+ENV CORE_MODEL_OWLV2_ENABLED=False
+ENV ENABLE_STREAM_API=True
+ENV ENABLE_WORKFLOWS_PROFILING=True
+ENV ENABLE_PROMETHEUS=True
+
+ENV CURRENT_INFERENCE_PLATFORM=rknn
 
 ENTRYPOINT ["./entrypoint.sh"]
