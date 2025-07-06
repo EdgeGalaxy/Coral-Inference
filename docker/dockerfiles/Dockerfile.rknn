@@ -1,14 +1,26 @@
 FROM ubuntu:22.04
 
-ARG RKNN_VERSION=1.6.0
+ARG RKNN_VERSION=2.3.2
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && apt install -y git && \
-    git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
+RUN apt update -y && apt install -y \
+    git \
+    libxext6 \
+    libopencv-dev \
+    uvicorn \
+    python3-pip \
+    git \
+    libgdal-dev \
+    cmake && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
-COPY /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
-COPY /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-*.whl /
+
+RUN git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2
+
+RUN cp /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/ && \
+    cp /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/ && \
+    cp /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-*.whl /
 
 RUN ldconfig
 
