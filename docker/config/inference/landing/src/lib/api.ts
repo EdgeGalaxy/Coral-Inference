@@ -1,6 +1,17 @@
 // API服务 - 连接后端接口
 // 环境变量配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
+const getApiBaseUrl = (): string => {
+  // 在浏览器环境中，动态获取当前页面的主机名
+  // 这样可以确保API请求与前端页面在同一个域下，解决了内网访问的问题
+  if (typeof window !== 'undefined') {
+    // 使用与浏览器地址栏相同的协议和主机名，端口固定为9001
+    return `${window.location.protocol}//${window.location.hostname}:9001`
+  }
+
+  // 在服务器端环境(SSR/SSG)或构建时，使用环境变量或默认值
+  // 这种情况下的请求地址需要通过环境变量 `NEXT_PUBLIC_API_BASE_URL` 来指定
+  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
+}
 
 // 状态枚举
 export type PipelineStatus = 'pending' | 'running' | 'warning' | 'failure' | 'muted' | 'stopped' | 'not_found' | 'timeout'
@@ -86,6 +97,7 @@ async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const API_BASE_URL = getApiBaseUrl()
   const url = `${API_BASE_URL}${endpoint}`
   
   const defaultOptions: RequestInit = {
