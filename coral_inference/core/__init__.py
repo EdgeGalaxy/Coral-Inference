@@ -41,7 +41,7 @@ if runtime_platform == "rknn":
     )
 else:
     logger.info(
-        "runtime_platform is {runtime_platform}, using default OnnxRoboflowInferenceModel"
+        f"runtime_platform is {runtime_platform}, using default OnnxRoboflowInferenceModel"
     )
 
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)

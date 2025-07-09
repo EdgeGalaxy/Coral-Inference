@@ -54,6 +54,6 @@ def get_runtime_platform():
         subprocess.check_output("rknn-server")
         logger.info("rknn-server is installed, using rknn runtime")
         return "rknn"
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         logger.info("rknn-server is not installed, using onnx runtime")
         return "onnx"
