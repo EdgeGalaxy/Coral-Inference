@@ -1,46 +1,58 @@
-FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 
+# 构建阶段
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
 
-WORKDIR /app
-
-# 缓存层1: 安装系统依赖（很少变化）
+# 安装构建依赖
 RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    libxext6 \
-    libopencv-dev \
-    uvicorn \
     python3-pip \
     git \
-    libgdal-dev \
-    wget \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# 缓存层2: 设置Python链接（很少变化）
+# 设置 Python 链接
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# 缓存层3: 安装Python构建工具（很少变化）
+# 安装 Poetry
 RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
     && poetry config virtualenvs.create false
 
 WORKDIR /tmp
 
-# 缓存层4: 复制依赖文件（偶尔变化）
+# 复制依赖文件
 COPY pyproject.toml poetry.lock ./
 
-# 缓存层5: 安装基础依赖（不包括可选的GPU组）
+# 安装 Python 依赖（包括 GPU 组）
 RUN poetry install --no-root --group gpu
 
-
+# 复制源代码并构建
 COPY coral_inference /tmp/coral_inference
+RUN poetry build
 
-RUN poetry build && \
-    pip install --no-cache-dir dist/*.whl
-
+# 运行阶段
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# 缓存层4: 复制配置文件（偶尔变化）
-COPY docker/config/* /app/
+# 安装运行时依赖
+RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    libxext6 \
+    libopencv-dev \
+    python3-pip \
+    libgdal-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# 缓存层5: 设置权限（配置文件变化时重新构建）
+# 设置 Python 链接
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# 从构建阶段复制 Python 包
+COPY --from=builder /usr/local/lib/python3.*/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# 从构建阶段复制构建的 wheel 包并安装
+COPY --from=builder /tmp/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
+
+# 复制配置文件
+COPY docker/config/* /app/
 RUN chmod +x ./entrypoint.sh
 
 # Environment variables

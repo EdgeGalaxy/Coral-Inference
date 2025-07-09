@@ -65,13 +65,13 @@ jobs:
         run: |
           if [ "${{ inputs.image-type }}" = "rknn" ]; then
             echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:${{ steps.extract_tag.outputs.TAG_NAME }}-rknn${{env.RKNN_VERSION}}" >> $GITHUB_OUTPUT
-            echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache-rknn${{env.RKNN_VERSION}}" >> $GITHUB_OUTPUT
+            echo "CACHE_TAG=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache-rknn${{env.RKNN_VERSION}}" >> $GITHUB_OUTPUT
           elif [ "${{ inputs.image-type }}" = "gpu" ]; then
             echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:${{ steps.extract_tag.outputs.TAG_NAME }}-gpu" >> $GITHUB_OUTPUT
-            echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache-gpu" >> $GITHUB_OUTPUT
+            echo "CACHE_TAG=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache-gpu" >> $GITHUB_OUTPUT
           else
             echo "TAGS=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:${{ steps.extract_tag.outputs.TAG_NAME }}" >> $GITHUB_OUTPUT
-            echo "CACHE_FROM=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache" >> $GITHUB_OUTPUT
+            echo "CACHE_TAG=${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}:buildcache" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and Push
@@ -82,6 +82,10 @@ jobs:
           tags: ${{ steps.tags.outputs.TAGS }}
           platforms: ${{ inputs.platforms }}
           file: ${{ inputs.dockerfile-path }}
-          cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_FROM }}
-          cache-to: type=inline
+          cache-from: type=registry,ref=${{ steps.tags.outputs.CACHE_TAG }}
+          cache-to: type=registry,ref=${{ steps.tags.outputs.CACHE_TAG }},mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          provenance: false
+          sbom: false
 
