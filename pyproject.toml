@@ -16,7 +16,6 @@ onnxruntime = "~1.21.0"
 optional = true
 
 [tool.poetry.group.npu.dependencies]
-rknn-toolkit-lite2 = {version = "^1.6.0", source = "loopeai"}
 
 
 [tool.poetry.group.gpu]
@@ -24,7 +23,6 @@ optional = true
 
 [tool.poetry.group.gpu.dependencies]
 inference-gpu = {extras = ["http"], version = "*"}
-onnxruntime-gpu = "~1.21.0"
 
 
 [[tool.poetry.source]]

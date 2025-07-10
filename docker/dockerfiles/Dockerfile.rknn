@@ -1,11 +1,13 @@
 # Stage 1: Get RKNN source
 FROM ubuntu:22.04 AS source
 
-ARG RKNN_VERSION=1.6.0
+ARG RKNN_VERSION=2.3.2
 ENV RKNN_VERSION=${RKNN_VERSION}
 
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
     && git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -24,6 +26,7 @@ RUN apt-get update -y \
         python3-dev \
         git \
         build-essential \
+        ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,11 +41,11 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # Copy RKNN files from source stage
-COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl /tmp/
+COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl /tmp/
 
 # 安装 Python 依赖（包括 RKNN 组）
 RUN poetry install --no-root --only=main --with=npu \
-    && pip install --no-cache-dir /tmp/rknn_toolkit_lite2-${RKNN_VERSION}-cp310-cp310-linux_aarch64.whl \
+    && pip install --no-cache-dir /tmp/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl \
     && pip cache purge
 
 # 复制源代码并构建
@@ -65,6 +68,7 @@ RUN apt-get update -y \
         libopencv-dev \
         libgdal-dev \
         libgomp1 \
+        ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
