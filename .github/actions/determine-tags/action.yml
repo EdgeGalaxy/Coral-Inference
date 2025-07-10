@@ -39,6 +39,17 @@ runs:
         EVENT_NAME="${{ github.event_name }}"
         TARGET_BRANCH="${{ github.event.release.target_commitish }}"
 
+        # Debug information
+        echo "=== DEBUG INFORMATION ==="
+        echo "CUSTOM_TAG: '$CUSTOM_TAG'"
+        echo "VERSION: '$VERSION'"
+        echo "BASE_IMAGE: '$BASE_IMAGE'"
+        echo "FORCE_PUSH: '$FORCE_PUSH'"
+        echo "BRANCH: '$BRANCH'"
+        echo "EVENT_NAME: '$EVENT_NAME'"
+        echo "TARGET_BRANCH: '$TARGET_BRANCH'"
+        echo "=========================="
+
         # Initialize the tags
         IMAGE_TAGS=""
 
@@ -92,6 +103,12 @@ runs:
 
         # Clean up leading/trailing commas
         IMAGE_TAGS=$(echo "$IMAGE_TAGS" | sed 's/^,//;s/,$//')
+
+        # Fallback: if no tags were generated, use version tag as default
+        if [ -z "$IMAGE_TAGS" ]; then
+          echo "No tags generated, using version tag as fallback"
+          IMAGE_TAGS="$BASE_IMAGE:$VERSION"
+        fi
 
         # Echo the computed tags
         echo "Computed image tags: $IMAGE_TAGS"

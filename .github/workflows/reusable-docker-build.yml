@@ -32,7 +32,6 @@ on:
 
 env:
   VERSION: "0.0.0" # Default version, will be overwritten
-  BASE_IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
 
 jobs:
   build:
@@ -42,6 +41,8 @@ jobs:
       id-token: write
       contents: read
       packages: write
+    env:
+      BASE_IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
     steps:
       - name: 🛎️ Checkout
         uses: actions/checkout@v4
@@ -53,7 +54,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Read version from file
-        run: echo "VERSION=$(python version.py)" >> $GITHUB_ENV
+        run: |
+          VERSION=$(python version.py 2>/dev/null | tail -n1)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Detected version: $VERSION"
+          echo "Base image will be: $BASE_IMAGE"
 
       - name: Determine Image Tags
         id: tags
