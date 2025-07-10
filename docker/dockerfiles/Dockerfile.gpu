@@ -27,7 +27,7 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # 安装 Python 依赖（包括 GPU 组）
-RUN poetry install --no-root --only=main --group=gpu \
+RUN poetry install --no-root --with=gpu \
     && pip cache purge
 
 # 复制源代码并构建

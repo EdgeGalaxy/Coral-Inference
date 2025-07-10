@@ -8,7 +8,7 @@ RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
-    && git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2 \
+    && git clone -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -41,10 +41,10 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # Copy RKNN files from source stage
-COPY --from=source /rknn-toolkit2/rknn_toolkit_lite2/packages/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl /tmp/
+COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl /tmp/
 
 # 安装 Python 依赖（包括 RKNN 组）
-RUN poetry install --no-root --only=main --with=npu \
+RUN poetry install --no-root --only=main \
     && pip install --no-cache-dir /tmp/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl \
     && pip cache purge
 
