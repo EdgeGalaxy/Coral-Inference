@@ -24,11 +24,25 @@ on:
         type: string
         description: "Custom tag to use for the image"
         default: ""
+      registry:
+        required: false
+        type: string
+        description: "Docker registry to use"
+        default: "docker.io"
+      custom_registry:
+        required: false
+        type: string
+        description: "Custom registry URL"
+        default: ""
     secrets:
       DOCKERHUB_USERNAME:
         required: true
       DOCKERHUB_TOKEN:
         required: true
+      DOCKERHUB_REGISTRY:
+        required: false
+      GHCR_TOKEN:
+        required: false
 
 env:
   VERSION: "0.0.0" # Default version, will be overwritten
@@ -41,24 +55,52 @@ jobs:
       id-token: write
       contents: read
       packages: write
-    env:
-      BASE_IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
+
     steps:
       - name: 🛎️ Checkout
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
+      - name: Set registry and image name
+        id: registry
+        run: |
+          # Determine registry
+          if [[ "${{ inputs.registry }}" == "custom" && -n "${{ inputs.custom_registry }}" ]]; then
+            REGISTRY="${{ inputs.custom_registry }}"
+          elif [[ "${{ inputs.registry }}" == "ghcr.io" ]]; then
+            REGISTRY="ghcr.io"
+          elif [[ -n "${{ secrets.DOCKERHUB_REGISTRY }}" ]]; then
+            REGISTRY="${{ secrets.DOCKERHUB_REGISTRY }}"
+          else
+            REGISTRY="docker.io"
+          fi
+          
+          # Determine image name
+          if [[ "$REGISTRY" == "ghcr.io" ]]; then
+            BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/coral-inference-server-${{ inputs.image-type }}"
+          elif [[ "$REGISTRY" == "docker.io" || "$REGISTRY" == "" ]]; then
+            BASE_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
+          else
+            BASE_IMAGE="$REGISTRY/${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
+          fi
+          
+          echo "REGISTRY=$REGISTRY" >> $GITHUB_OUTPUT
+          echo "BASE_IMAGE=$BASE_IMAGE" >> $GITHUB_OUTPUT
+          echo "Selected registry: $REGISTRY"
+          echo "Base image: $BASE_IMAGE"
+
+      - name: Login to Docker Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ steps.registry.outputs.REGISTRY }}
+          username: ${{ steps.registry.outputs.REGISTRY == 'ghcr.io' && github.actor || secrets.DOCKERHUB_USERNAME }}
+          password: ${{ steps.registry.outputs.REGISTRY == 'ghcr.io' && secrets.GHCR_TOKEN || secrets.DOCKERHUB_TOKEN }}
 
       - name: Read version from file
         run: |
           VERSION=$(python version.py 2>/dev/null | tail -n1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Detected version: $VERSION"
-          echo "Base image will be: $BASE_IMAGE"
+          echo "Base image will be: ${{ steps.registry.outputs.BASE_IMAGE }}"
 
       - name: Determine Image Tags
         id: tags
@@ -66,7 +108,7 @@ jobs:
         with:
           custom_tag: ${{ inputs.custom_tag }}
           version: ${{ env.VERSION }}
-          base_image: ${{ env.BASE_IMAGE }}
+          base_image: ${{ steps.registry.outputs.BASE_IMAGE }}
           force_push: ${{ inputs.push-image }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -89,8 +131,12 @@ jobs:
           tags: ${{ steps.tags.outputs.image_tags }}
           platforms: ${{ inputs.platforms }}
           file: ${{ inputs.dockerfile-path }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ steps.registry.outputs.BASE_IMAGE }}:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ steps.registry.outputs.BASE_IMAGE }}:buildcache,mode=max
           build-args: |
             BUILDKIT_INLINE_CACHE=1
           provenance: false

@@ -8,7 +8,7 @@ RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
-    && git clone -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2 \
+    && git clone --depth 1 -b v${RKNN_VERSION} https://github.com/airockchip/rknn-toolkit2.git /rknn-toolkit2 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
