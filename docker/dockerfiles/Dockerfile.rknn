@@ -41,7 +41,7 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # Copy RKNN files from source stage
-COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl /tmp/
+COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp310-*.whl /tmp/
 
 # 安装 Python 依赖
 RUN poetry install --no-root --only=main \
