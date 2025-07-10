@@ -1,35 +1,37 @@
 # 构建阶段：安装所有依赖并构建应用
-FROM python:3.10 AS builder
+FROM python:3.10-slim AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# 安装构建依赖
+# 安装构建依赖（精简版本）
 RUN apt-get update -y \
-    && apt-get install -y \
+    && apt-get install -y --no-install-recommends \
         git \
-        cmake \
         build-essential \
+        python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Poetry
-RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
-    && poetry config virtualenvs.create false
+RUN pip install --no-cache-dir -U pip setuptools wheel poetry==1.8.3 \
+    && poetry config virtualenvs.create false \
+    && poetry config installer.max-workers 10
 
 WORKDIR /tmp
 
 # 复制依赖文件（这层会在依赖变化时失效）
 COPY pyproject.toml poetry.lock ./
 
-# 安装 Python 依赖
-RUN poetry install --no-root
+# 安装 Python 依赖（只安装生产依赖）
+RUN poetry install --no-root --only=main \
+    && pip cache purge
 
 # 复制源代码并构建
 COPY coral_inference /tmp/coral_inference
 RUN poetry build
 
 # 运行阶段：只包含运行时需要的依赖
-FROM python:3.10-slim
+FROM python:3.10-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -39,6 +41,7 @@ RUN apt-get update -y \
         libxext6 \
         libopencv-dev \
         libgdal-dev \
+        libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -48,7 +51,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 从构建阶段复制构建的 wheel 包并安装
 COPY --from=builder /tmp/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl uvicorn && rm -rf /tmp/*.whl
+RUN pip install --no-cache-dir /tmp/*.whl uvicorn \
+    && rm -rf /tmp/*.whl \
+    && pip cache purge
 
 WORKDIR /app
 

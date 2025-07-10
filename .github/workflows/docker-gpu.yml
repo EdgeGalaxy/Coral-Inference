@@ -1,10 +1,15 @@
 name: Build and Push GPU Containers
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 on:
+  release:
+    types: [created]
   push:
     branches:
       - 'main'
@@ -17,6 +22,10 @@ on:
         type: boolean
         description: "Do you want to push image after build?"
         default: false
+      custom_tag:
+        type: string
+        description: "Custom tag to use for the image (overrides VERSION)"
+        default: ""
 
 jobs:
   docker-gpu:
@@ -24,8 +33,9 @@ jobs:
     with:
       image-type: gpu
       dockerfile-path: ./docker/dockerfiles/Dockerfile.gpu
-      platforms: linux/arm64
+      platforms: linux/amd64
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+      custom_tag: ${{ inputs.custom_tag }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

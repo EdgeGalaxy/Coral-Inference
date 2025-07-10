@@ -1,5 +1,8 @@
 name: Build and Push CPU Containers
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,6 +22,10 @@ on:
         type: boolean
         description: "Do you want to push image after build?"
         default: false
+      custom_tag:
+        type: string
+        description: "Custom tag to use for the image (overrides VERSION)"
+        default: ""
 
 jobs:
   docker-cpu:
@@ -28,6 +35,7 @@ jobs:
       dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
       platforms: linux/arm64,linux/amd64
       push-image: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.force_push }}
+      custom_tag: ${{ inputs.custom_tag }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -1,19 +1,25 @@
 # 构建阶段
 FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
 
-# 安装构建依赖
-RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3-pip \
-    git \
-    build-essential \
+ARG DEBIAN_FRONTEND=noninteractive
+
+# 安装构建依赖（精简版本）
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        python3-pip \
+        python3-dev \
+        git \
+        build-essential \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置 Python 链接
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # 安装 Poetry
-RUN pip install --no-cache-dir -U pip setuptools wheel poetry \
-    && poetry config virtualenvs.create false
+RUN pip install --no-cache-dir -U pip setuptools wheel poetry==1.8.3 \
+    && poetry config virtualenvs.create false \
+    && poetry config installer.max-workers 10
 
 WORKDIR /tmp
 
@@ -21,35 +27,43 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # 安装 Python 依赖（包括 GPU 组）
-RUN poetry install --no-root --group gpu
+RUN poetry install --no-root --only=main --with=gpu \
+    && pip cache purge
 
 # 复制源代码并构建
 COPY coral_inference /tmp/coral_inference
 RUN poetry build
 
 # 运行阶段
-FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# 安装运行时依赖
-RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    libxext6 \
-    libopencv-dev \
-    python3-pip \
-    libgdal-dev \
+# 安装运行时依赖（精简版本）
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        libxext6 \
+        libopencv-dev \
+        python3-pip \
+        libgdal-dev \
+        libgomp1 \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置 Python 链接
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# 从构建阶段复制 Python 包
+# 从构建阶段复制 Python 包（保持路径一致）
 COPY --from=builder /usr/local/lib/python3.*/dist-packages /usr/local/lib/python3.10/dist-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 从构建阶段复制构建的 wheel 包并安装
 COPY --from=builder /tmp/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
+RUN pip install --no-cache-dir /tmp/*.whl \
+    && rm -rf /tmp/*.whl \
+    && pip cache purge
 
 # 复制配置文件
 COPY docker/config/* /app/
