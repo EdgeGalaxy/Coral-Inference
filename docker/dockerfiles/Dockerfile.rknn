@@ -43,9 +43,9 @@ COPY pyproject.toml poetry.lock ./
 # Copy RKNN files from source stage
 COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl /tmp/
 
-# 安装 Python 依赖（包括 RKNN 组）
+# 安装 Python 依赖
 RUN poetry install --no-root --only=main \
-    && pip install --no-cache-dir /tmp/rknn_toolkit_lite2-*-cp310-*-linux_aarch64.whl \
+    && pip install --no-cache-dir /tmp/*.whl \
     && pip cache purge
 
 # 复制源代码并构建
