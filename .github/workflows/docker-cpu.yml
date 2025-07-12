@@ -46,10 +46,10 @@ jobs:
       image-type: cpu
       dockerfile-path: ./docker/dockerfiles/Dockerfile.cpu
       platforms: linux/arm64,linux/amd64
-      push-image: ${{ startsWith(github.ref, 'refs/tags/') || inputs.force_push }}
-      custom_tag: ${{ inputs.custom_tag }}
-      registry: ${{ inputs.registry || 'docker.io' }}
-      custom_registry: ${{ inputs.custom_registry }}
+      push-image: true
+      custom_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.custom_tag || '' }}
+      registry: ${{ github.event_name == 'workflow_dispatch' && inputs.registry || 'docker.io' }}
+      custom_registry: ${{ github.event_name == 'workflow_dispatch' && inputs.custom_registry || '' }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
