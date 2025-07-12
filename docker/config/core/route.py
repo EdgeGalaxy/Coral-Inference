@@ -24,9 +24,9 @@ from inference.core.env import MODEL_CACHE_DIR
 
 from coral_inference.core.inference.stream_manager.entities import PatchInitialiseWebRTCPipelinePayload
 
-from pipeline_cache import PipelineCache
-from pipeline_middleware import HookPipelineMiddleware
-from monitor import setup_monitor, PipelineMonitor
+from core.pipeline_cache import PipelineCache
+from core.pipeline_middleware import HookPipelineMiddleware
+from core.monitor import setup_monitor, PipelineMonitor
 
 
 

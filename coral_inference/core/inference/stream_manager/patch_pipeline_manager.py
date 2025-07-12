@@ -62,7 +62,7 @@ async def process_video_frames(
             predictions = predictions if isinstance(predictions, list) else [predictions]
             frames = frames if isinstance(frames, list) else [frames]
             show_frames = {frame.source_id: video_frame_func(prediction, frame) 
-                          for prediction, frame in zip(predictions, frames)}
+                          for prediction, frame in zip(predictions, frames) if frame}
             
             # 合并所有帧
             merged_frame = merge_frames(show_frames, layout='grid')

@@ -14,7 +14,8 @@ from inference.core.interfaces.stream_manager.api.stream_manager_client import (
     StreamManagerClient
 )
 from inference.core.interfaces.stream_manager.api.entities import ConsumePipelineResponse
-from pipeline_cache import PipelineCache
+
+from core.pipeline_cache import PipelineCache
 
 
 class ResultsCollector:

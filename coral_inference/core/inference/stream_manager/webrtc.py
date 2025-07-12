@@ -16,6 +16,7 @@ from aiortc import (
 from aiortc.rtcrtpreceiver import RemoteStreamTrack
 from av import VideoFrame
 from av import logging as av_logging
+from loguru import logger
 
 from inference.core.interfaces.stream_manager.manager_app.entities import (
     WebRTCOffer,
@@ -137,7 +138,7 @@ class VideoTransformTrack(VideoStreamTrack):
             new_frame.pts = self._processed
             new_frame.time_base = Fraction(1, int(self.fps))
         except Exception as e:
-            print(f'Error setting frame time: {e} {self.fps}')
+            logger.error(f'Error setting frame time: {e} {self.fps}')
             new_frame.pts = self._processed
             new_frame.time_base = Fraction(1, 30)
 
@@ -187,11 +188,11 @@ async def init_rtc_peer_connection(
 
     @peer_connection.on("connectionstatechange")
     async def on_connectionstatechange():
-        print("Connection state is %s", peer_connection.connectionState)
+        logger.info("Connection state is %s", peer_connection.connectionState)
         if peer_connection.connectionState in {"failed", "closed"}:
-            print("Stopping WebRTC peer")
+            logger.info("Stopping WebRTC peer")
             video_transform_track.close()
-            print("Signalling WebRTC termination to the caller")
+            logger.info("Signalling WebRTC termination to the caller")
             feedback_stop_event.set()
             await peer_connection.close()
 
@@ -200,6 +201,6 @@ async def init_rtc_peer_connection(
     )
     answer = await peer_connection.createAnswer()
     await peer_connection.setLocalDescription(answer)
-    print(f"WebRTC connection status: {peer_connection.connectionState}")
+    logger.info(f"WebRTC connection status: {peer_connection.connectionState}")
 
     return peer_connection
