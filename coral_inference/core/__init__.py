@@ -1,12 +1,14 @@
 from inference.core.models import roboflow
 from inference.core.logger import logger
 from inference.core.interfaces.stream import sinks
+from inference.core.interfaces.camera import video_source 
 from inference.core.interfaces.stream_manager.api import stream_manager_client
 from inference.core.interfaces.stream_manager.manager_app import app
 from inference.core.interfaces.stream_manager.manager_app import inference_pipeline_manager
 
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
+from coral_inference.core.inference.camera import patch_video_source
 from coral_inference.core.inference.stream_manager import patch_app
 from coral_inference.core.inference.stream_manager import patch_manager_client
 from coral_inference.core.inference.stream_manager import patch_pipeline_manager
@@ -46,6 +48,7 @@ else:
 
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)
 sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(sinks.InMemoryBufferSink.on_prediction)
+video_source.CV2VideoFrameProducer = patch_video_source.PatchedCV2VideoFrameProducer
 inference_pipeline_manager.InferencePipelineManager._offer = patch_pipeline_manager.offer
 inference_pipeline_manager.InferencePipelineManager._handle_command = patch_pipeline_manager.rewrite_handle_command
 stream_manager_client.StreamManagerClient.offer = patch_manager_client.offer

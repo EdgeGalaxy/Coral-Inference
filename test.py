@@ -67,7 +67,7 @@ data = {
   ]
 }
 
-result = client.start_inference_pipeline_with_workflow(
+# result = client.start_inference_pipeline_with_workflow(
 #     workspace_name="test-j47p5",
 #     workflow_specification=data,
 #     video_reference='/home/kefei/workspace/Coral-Inference/people-walking.mp4'

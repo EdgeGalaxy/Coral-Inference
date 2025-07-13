@@ -123,7 +123,6 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
                 f"Failed to list pipelines, status code: {response.status_code}"
             )
             return response
-        
         data = await self._process_response_content(response)
         data["fixed_pipelines"] = self.pipeline_cache.list()
 

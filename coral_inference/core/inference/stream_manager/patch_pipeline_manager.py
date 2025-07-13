@@ -22,123 +22,63 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     OperationStatus,
 )
 from inference.core.interfaces.stream_manager.manager_app.inference_pipeline_manager import InferencePipelineManager
-from inference.core.utils.async_utils import Queue as SyncAsyncQueue
 from inference.core.workflows.errors import WorkflowSyntaxError
-from inference.core.workflows.execution_engine.entities.base import WorkflowImageData
 
-from coral_inference.core.inference.stream_manager.webrtc import (
-    RTCPeerConnectionWithFPS,
-    init_rtc_peer_connection,
-)
-from coral_inference.core.utils.image_utils import merge_frames
 from coral_inference.core.inference.stream_manager.entities import (
     ExtendCommandType,
     PatchInitialiseWebRTCPipelinePayload
 )
-
-async def process_video_frames(
-    webrtc_buffer: deque,
-    from_inference_queue: SyncAsyncQueue,
-    stop_event: Event,
-    video_frame_func: Callable,
-):
-    """
-    处理视频帧的线程函数
-    
-    Args:
-        buffer_sink: 包含webrtc_buffer的sink对象
-        from_inference_queue: 用于发送合并后帧的队列
-        stop_event: 用于控制线程停止的事件
-        video_frame_func: 处理单个视频帧的函数
-        stream_output: 流输出配置
-    """
-    while not stop_event.is_set():
-        try:
-            if not webrtc_buffer:
-                await asyncio.sleep(1/60)
-                continue
-
-            predictions, frames = webrtc_buffer.popleft()
-            predictions = predictions if isinstance(predictions, list) else [predictions]
-            frames = frames if isinstance(frames, list) else [frames]
-            show_frames = {frame.source_id: video_frame_func(prediction, frame) 
-                          for prediction, frame in zip(predictions, frames) if frame}
-            
-            # 合并所有帧
-            merged_frame = merge_frames(show_frames, layout='grid')
-            await from_inference_queue.async_put(merged_frame)
-            
-        except Exception as e:
-            print(f"Error processing video frames: {e}")
-            await asyncio.sleep(1/60)
-
+from coral_inference.core.inference.camera.webrtc_manager import (
+    WebRTCConnectionConfig,
+    create_webrtc_connection_with_pipeline_buffer,
+)
 
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
     try:
-        def start_loop(loop: asyncio.AbstractEventLoop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
+        logger.info(f"使用WebRTCManager创建WebRTC连接 request_id={request_id}")
         
+        # 解析payload
         parsed_payload = PatchInitialiseWebRTCPipelinePayload.model_validate(payload)
 
-        loop = asyncio.new_event_loop()
-        t = threading.Thread(target=start_loop, args=(loop,), daemon=True)
-        t.start()
-
-        webrtc_offer = parsed_payload.webrtc_offer
-        webrtc_turn_config = parsed_payload.webrtc_turn_config
-        webcam_fps = parsed_payload.webcam_fps
-        from_inference_queue = SyncAsyncQueue(loop=loop)
-
-        stop_event = Event()
-
-        future = asyncio.run_coroutine_threadsafe(
-            init_rtc_peer_connection(
-                webrtc_offer=webrtc_offer,
-                webrtc_turn_config=webrtc_turn_config,
-                from_inference_queue=from_inference_queue,
-                feedback_stop_event=stop_event,
-                webcam_fps=webcam_fps,
-                max_consecutive_timeouts=parsed_payload.max_consecutive_timeouts,
-                min_consecutive_on_time=parsed_payload.min_consecutive_on_time,
-                processing_timeout=parsed_payload.processing_timeout,
-            ),
-            loop,
+        # 创建WebRTC连接配置
+        config = WebRTCConnectionConfig(
+            webrtc_offer=parsed_payload.webrtc_offer,
+            webrtc_turn_config=parsed_payload.webrtc_turn_config,
+            webcam_fps=parsed_payload.webcam_fps,
+            processing_timeout=parsed_payload.processing_timeout,
+            max_consecutive_timeouts=parsed_payload.max_consecutive_timeouts,
+            min_consecutive_on_time=parsed_payload.min_consecutive_on_time,
+            stream_output=parsed_payload.stream_output
         )
-        peer_connection: RTCPeerConnectionWithFPS = future.result()
 
-        def get_video_frame(
-            prediction: Dict[str, WorkflowImageData], video_frame: VideoFrame
-        ) -> None:
-            if not any(
-                isinstance(v, WorkflowImageData) for v in prediction.values()
-            ) or not parsed_payload.stream_output:
-                result_frame = video_frame.image.copy()
-                return result_frame
-            if parsed_payload.stream_output[0] not in prediction or not isinstance(
-                prediction[parsed_payload.stream_output[0]], WorkflowImageData
-            ):
-                for output in prediction.values():
-                    if isinstance(output, WorkflowImageData):
-                        return output.numpy_image
-            return prediction[parsed_payload.stream_output[0]].numpy_image
-        
-        # clear buffer
-        self._buffer_sink._webrtc_buffer.clear()
-        asyncio.run_coroutine_threadsafe(process_video_frames(self._buffer_sink._webrtc_buffer, from_inference_queue, stop_event, get_video_frame), loop)
+        # 使用便捷函数创建WebRTC连接（pipeline模式）
+        result = create_webrtc_connection_with_pipeline_buffer(
+            config=config,
+            webrtc_buffer=self._buffer_sink._webrtc_buffer
+        )
 
-        # 将合并后的帧发送到WebRTC
-        self._responses_queue.put(
-            (
-                request_id,
-                {
-                    STATUS_KEY: OperationStatus.SUCCESS,
-                    "sdp": peer_connection.localDescription.sdp,
-                    "type": peer_connection.localDescription.type,
-                },
+        if result.success:
+            # 成功创建连接，返回SDP响应
+            self._responses_queue.put(
+                (
+                    request_id,
+                    {
+                        STATUS_KEY: OperationStatus.SUCCESS,
+                        "sdp": result.sdp,
+                        "type": result.type,
+                    },
+                )
             )
-        )
-        print(f"WebRTC pipeline initialised. request_id={request_id}...")
+            logger.info(f"WebRTC pipeline initialised successfully. request_id={request_id}")
+        else:
+            # 连接创建失败
+            self._handle_error(
+                request_id=request_id,
+                error=Exception(result.error),
+                public_error_message=f"Failed to create WebRTC connection: {result.error}",
+                error_type=ErrorType.INTERNAL_ERROR,
+            )
+            
     except (
         ValidationError,
         MissingApiKeyError,
@@ -195,7 +135,7 @@ def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
         if command_type is ExtendCommandType.CONSUME_RESULT:
             return self._consume_results(request_id=request_id, payload=payload)
         if command_type is ExtendCommandType.OFFER:
-            return self._offer(request_id=request_id, payload=payload)
+            return offer(self, request_id=request_id, payload=payload)
         raise NotImplementedError(
             f"Command type `{command_type}` cannot be handled"
         )
