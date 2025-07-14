@@ -80,7 +80,7 @@ jobs:
           elif [[ "$REGISTRY" == "docker.io" || "$REGISTRY" == "" ]]; then
             BASE_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/coral-inference-server-${{ inputs.image-type }}"
           else
-            BASE_IMAGE="$REGISTRY/${{ secrets.DOCKER_NAMESPACE }}/coral-inference-server-${{ inputs.image-type }}"
+            BASE_IMAGE="$REGISTRY/${{ secrets.DOCKERHUB_NAMESPACE }}/coral-inference-server-${{ inputs.image-type }}"
           fi
           
           echo "REGISTRY=$REGISTRY" >> $GITHUB_OUTPUT
