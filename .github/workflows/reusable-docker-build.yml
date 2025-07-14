@@ -41,6 +41,8 @@ on:
         required: true
       DOCKERHUB_REGISTRY:
         required: false
+      DOCKERHUB_NAMESPACE:
+        required: false
       GHCR_TOKEN:
         required: false
 
