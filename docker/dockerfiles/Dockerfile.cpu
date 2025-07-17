@@ -58,7 +58,7 @@ RUN pip install --no-cache-dir /tmp/*.whl uvicorn \
 WORKDIR /app
 
 # 复制配置文件
-COPY docker/config/* /app/
+COPY docker/config /app/
 RUN chmod +x ./entrypoint.sh
 
 # Environment variables
