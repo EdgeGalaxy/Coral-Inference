@@ -140,13 +140,18 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
             return response
         data = await self._process_response_content(response)
         pipeline_id = data.get("context", {}).get("pipeline_id")
-        print(request_data)
         output_image_fields = request_data.get("processing_configuration", {}) \
-            .get("workflows_parameters", {}).pop("output_image_fields", []) + ['source_image']
+            .get("workflows_parameters", {}).get("output_image_fields", []) + ['source_image']
         pipeline_name = request_data.get("processing_configuration", {}) \
-            .get("workflows_parameters", {}).pop("pipeline_name", "")
+            .get("workflows_parameters", {}).get("pipeline_name", "")
         is_file_source = request_data.get("processing_configuration", {}) \
             .get("workflows_parameters", {}).get("is_file_source", False)
+        
+        # 获取自动重启和自动录制视频的参数，设置默认值
+        auto_restart = request_data.get("processing_configuration", {}) \
+            .get("workflows_parameters", {}).get("auto_restart", not is_file_source)
+        auto_record_video = request_data.get("processing_configuration", {}) \
+            .get("workflows_parameters", {}).get("auto_record_video", True)
         
         # 如果是文件源，处理视频下载
         if is_file_source:
@@ -159,7 +164,7 @@ class HookPipelineMiddleware(BaseHTTPMiddleware):
                 request_data["video_configuration"]["video_reference"] = downloaded_paths
                 logger.info(f"Updated video references: {downloaded_paths}")
         
-        self.pipeline_cache.create(pipeline_id, pipeline_name, request_data, {"output_image_fields": output_image_fields})
+        self.pipeline_cache.create(pipeline_id, pipeline_name, request_data, {"output_image_fields": output_image_fields}, auto_restart, auto_record_video)
 
         return await self._create_response(
             data, response, isinstance(response, StreamingResponse)

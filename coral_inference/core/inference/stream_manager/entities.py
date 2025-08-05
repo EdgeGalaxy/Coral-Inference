@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import List, Optional
 
+import supervision as sv
+
 from pydantic import BaseModel, Field
 from inference.core.interfaces.stream_manager.manager_app.entities import WebRTCOffer, WebRTCTURNConfig
 
@@ -18,6 +20,15 @@ class PatchInitialiseWebRTCPipelinePayload(BaseModel):
     max_consecutive_timeouts: int = 30
     min_consecutive_on_time: int = 5
 
+
+class VideoRecordSinkConfiguration(BaseModel):
+    output_directory: str = Field(default="records")
+    video_info: Optional[sv.VideoInfo] = None
+    segment_duration: int = 100
+    max_disk_usage: float = 0.8
+    max_total_size: int = 10 * 1024 * 1024 * 1024
+    image_input_name: Optional[str] = None
+    resolution: int = Field(default=360, ge=1, le=1080, description="视频分辨率，默认360p，最高支持1080p")
 
 
 class ExtendCommandType(str, Enum):

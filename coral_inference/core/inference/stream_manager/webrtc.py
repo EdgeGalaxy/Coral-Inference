@@ -107,7 +107,7 @@ class VideoTransformTrack(VideoStreamTrack):
             if not self._last_frame:
                 np_frame = overlay_text_on_np_frame(
                     np.zeros((480, 640, 3), dtype=np.uint8),
-                    ["Inference pipeline is starting..."],
+                    ["等待工作流初始化..."],
                 )
                 new_frame = VideoFrame.from_ndarray(np_frame, format="bgr24")
             elif (

@@ -30,6 +30,8 @@ class PipelineCache(SQLiteWrapper):
         self._col_payload_name = "payload"
         self._col_pipeline_name = "pipeline_name"
         self._col_parameters = "parameters"
+        self._col_auto_restart = "auto_restart"
+        self._col_auto_record_video = "auto_record_video"
         self._col_updated_at = "updated_at"
         self._col_created_at = "created_at"
 
@@ -44,6 +46,8 @@ class PipelineCache(SQLiteWrapper):
                 self._col_restore_pipeline_id: "CHAR(36) NOT NULL",
                 self._col_parameters: "TEXT NOT NULL",
                 self._col_pipeline_name: "TEXT NOT NULL",
+                self._col_auto_restart: "BOOLEAN NOT NULL",
+                self._col_auto_record_video: "BOOLEAN NOT NULL",
                 self._col_updated_at: "INTEGER NOT NULL",
                 self._col_created_at: "INTEGER NOT NULL",
             },
@@ -56,6 +60,8 @@ class PipelineCache(SQLiteWrapper):
         pipeline_name: str,
         payload: Any,
         parameters: Dict[str, Any],
+        auto_restart: bool = True,
+        auto_record_video: bool = True,
         sqlite_connection: Optional[sqlite3.Connection] = None,
     ):
         payload_str = json.dumps(payload)
@@ -68,6 +74,8 @@ class PipelineCache(SQLiteWrapper):
                     self._col_payload_name: payload_str,
                     self._col_parameters: parameters_str,
                     self._col_pipeline_name: pipeline_name,
+                    self._col_auto_restart: auto_restart,
+                    self._col_auto_record_video: auto_record_video,
                     self._col_updated_at: int(time.time()),
                     self._col_created_at: int(time.time()),
                 },
@@ -161,6 +169,9 @@ class PipelineCache(SQLiteWrapper):
                 if rows is None
                 else rows
             )
+            
+            # 只恢复 auto_restart 为 True 的 pipeline
+            rows = [r for r in rows if r.get(self._col_auto_restart, True)]
             if len(rows) > 0:
                 await self._restore(rows=rows, connection=connection)
             else:

@@ -1,37 +1,40 @@
-import asyncio
-import threading
-from threading import Event
-from typing import Dict, Callable
-from collections import deque
+import os
+import time
+from functools import partial
 
-import cv2 as cv
-import numpy as np
 from pydantic import ValidationError
 
-from inference.core import logger
+from loguru import logger
 from inference.core.exceptions import (
     MissingApiKeyError,
     RoboflowAPINotAuthorizedError,
     RoboflowAPINotNotFoundError,
 )
 from inference.core.interfaces.camera.entities import VideoFrame
+from inference.core.interfaces.stream.inference_pipeline import InferencePipeline
+from inference.core.interfaces.stream.sinks import InMemoryBufferSink, multi_sink
+from inference.core.interfaces.stream.watchdog import BasePipelineWatchDog
 from inference.core.interfaces.stream_manager.manager_app.entities import (
     TYPE_KEY,
     STATUS_KEY,
     ErrorType,
     OperationStatus,
+    InitialisePipelinePayload,
 )
 from inference.core.interfaces.stream_manager.manager_app.inference_pipeline_manager import InferencePipelineManager
 from inference.core.workflows.errors import WorkflowSyntaxError
 
 from coral_inference.core.inference.stream_manager.entities import (
     ExtendCommandType,
-    PatchInitialiseWebRTCPipelinePayload
+    PatchInitialiseWebRTCPipelinePayload,
+    VideoRecordSinkConfiguration
 )
 from coral_inference.core.inference.camera.webrtc_manager import (
     WebRTCConnectionConfig,
     create_webrtc_connection_with_pipeline_buffer,
 )
+from coral_inference.core.inference.stream.patch_sinks import TimeBasedVideoSink
+
 
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
     try:
@@ -118,10 +121,9 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
 
 def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
     try:
-        logger.info(f"Processing request={request_id}...")
         command_type = ExtendCommandType(payload[TYPE_KEY])
         if command_type is ExtendCommandType.INIT:
-            return self._initialise_pipeline(request_id=request_id, payload=payload)
+            return initialise_pipeline(self, request_id=request_id, payload=payload)
         if command_type is ExtendCommandType.WEBRTC:
             return self._start_webrtc(request_id=request_id, payload=payload)
         if command_type is ExtendCommandType.TERMINATE:
@@ -161,4 +163,107 @@ def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
             public_error_message="Unknown internal error. Raise this issue providing as "
             "much of a context as possible: https://github.com/roboflow/inference/issues",
             error_type=ErrorType.INTERNAL_ERROR,
+        )
+
+
+def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
+    """
+    修改版本的 _initialise_pipeline 函数，使用 multi_sink 方式支持多个 sink
+    默认包含 InMemoryBufferSink，可以传入额外的 sinks
+    """
+    try:
+        self._watchdog = BasePipelineWatchDog()
+        parsed_payload = InitialisePipelinePayload.model_validate(payload)
+        auto_video_record = parsed_payload.processing_configuration.workflows_parameters.get("auto_record_video", True)
+        used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
+        pipeline_id = used_pipeline_id or self._pipeline_id
+        
+        # 创建基础的 InMemoryBufferSink
+        buffer_sink = InMemoryBufferSink.init(
+            queue_size=parsed_payload.sink_configuration.results_buffer_size,
+        )
+        self._buffer_sink = buffer_sink
+        
+        # 构建 sinks 列表，默认包含 InMemoryBufferSink
+        sinks = [buffer_sink.on_prediction]
+        
+        # 添加额外的 sinks
+        if auto_video_record:
+            video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
+            video_sink = TimeBasedVideoSink.init(
+                pipeline_id=pipeline_id,
+                output_directory=video_record_sink_configuration.output_directory,
+                video_info=video_record_sink_configuration.video_info,
+                segment_duration=video_record_sink_configuration.segment_duration,
+                max_disk_usage=video_record_sink_configuration.max_disk_usage,
+                max_total_size=video_record_sink_configuration.max_total_size,
+                video_field_name=video_record_sink_configuration.image_input_name,
+            )
+            sinks.append(video_sink.on_prediction)
+        
+        # 使用 multi_sink 创建链式 sink
+        chained_sink = partial(multi_sink, sinks=sinks)
+        
+        self._inference_pipeline = InferencePipeline.init_with_workflow(
+            video_reference=parsed_payload.video_configuration.video_reference,
+            workflow_specification=parsed_payload.processing_configuration.workflow_specification,
+            workspace_name=parsed_payload.processing_configuration.workspace_name,
+            workflow_id=parsed_payload.processing_configuration.workflow_id,
+            api_key=parsed_payload.api_key,
+            image_input_name=parsed_payload.processing_configuration.image_input_name,
+            workflows_parameters=parsed_payload.processing_configuration.workflows_parameters,
+            on_prediction=chained_sink,
+            max_fps=parsed_payload.video_configuration.max_fps,
+            watchdog=self._watchdog,
+            source_buffer_filling_strategy=parsed_payload.video_configuration.source_buffer_filling_strategy,
+            source_buffer_consumption_strategy=parsed_payload.video_configuration.source_buffer_consumption_strategy,
+            video_source_properties=parsed_payload.video_configuration.video_source_properties,
+            workflows_thread_pool_workers=parsed_payload.processing_configuration.workflows_thread_pool_workers,
+            cancel_thread_pool_tasks_on_exit=parsed_payload.processing_configuration.cancel_thread_pool_tasks_on_exit,
+            video_metadata_input_name=parsed_payload.processing_configuration.video_metadata_input_name,
+            batch_collection_timeout=parsed_payload.video_configuration.batch_collection_timeout,
+            decoding_buffer_size=parsed_payload.decoding_buffer_size,
+            predictions_queue_size=parsed_payload.predictions_queue_size,
+        )
+        self._consumption_timeout = parsed_payload.consumption_timeout
+        self._last_consume_time = time.monotonic()
+        self._inference_pipeline.start(use_main_thread=False)
+        self._responses_queue.put(
+            (request_id, {STATUS_KEY: OperationStatus.SUCCESS})
+        )
+        logger.info(f"Pipeline initialised with multi_sink. request_id={request_id}...")
+    except (
+        ValidationError,
+        MissingApiKeyError,
+        KeyError,
+        NotImplementedError,
+    ) as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Could not decode InferencePipeline initialisation command payload.",
+            error_type=ErrorType.INVALID_PAYLOAD,
+        )
+    except RoboflowAPINotAuthorizedError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Invalid API key used or API key is missing. "
+            "Visit https://docs.roboflow.com/api-reference/authentication#retrieve-an-api-key",
+            error_type=ErrorType.AUTHORISATION_ERROR,
+        )
+    except RoboflowAPINotNotFoundError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Requested Roboflow resources (models / workflows etc.) not available or "
+            "wrong API key used.",
+            error_type=ErrorType.NOT_FOUND,
+        )
+    except WorkflowSyntaxError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message="Provided workflow configuration is not valid.",
+            error_type=ErrorType.INVALID_PAYLOAD,
         )
