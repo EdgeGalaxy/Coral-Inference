@@ -29,6 +29,7 @@ class VideoRecordSinkConfiguration(BaseModel):
     max_total_size: int = 10 * 1024 * 1024 * 1024
     image_input_name: Optional[str] = None
     resolution: int = Field(default=360, ge=1, le=1080, description="视频分辨率，默认360p，最高支持1080p")
+    is_open: bool = Field(default=True, description="是否启用录像功能")
 
 
 class ExtendCommandType(str, Enum):

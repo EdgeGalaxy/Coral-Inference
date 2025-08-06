@@ -174,7 +174,6 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
     try:
         self._watchdog = BasePipelineWatchDog()
         parsed_payload = InitialisePipelinePayload.model_validate(payload)
-        auto_video_record = parsed_payload.processing_configuration.workflows_parameters.get("auto_record_video", True)
         used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
         pipeline_id = used_pipeline_id or self._pipeline_id
         
@@ -187,9 +186,9 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         # 构建 sinks 列表，默认包含 InMemoryBufferSink
         sinks = [buffer_sink.on_prediction]
         
-        # 添加额外的 sinks
-        if auto_video_record:
-            video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
+        video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
+        # 检查是否启用录像功能
+        if video_record_sink_configuration.is_open:
             video_sink = TimeBasedVideoSink.init(
                 pipeline_id=pipeline_id,
                 output_directory=video_record_sink_configuration.output_directory,

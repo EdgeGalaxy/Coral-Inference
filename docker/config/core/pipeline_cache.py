@@ -31,7 +31,6 @@ class PipelineCache(SQLiteWrapper):
         self._col_pipeline_name = "pipeline_name"
         self._col_parameters = "parameters"
         self._col_auto_restart = "auto_restart"
-        self._col_auto_record_video = "auto_record_video"
         self._col_updated_at = "updated_at"
         self._col_created_at = "created_at"
 
@@ -47,7 +46,6 @@ class PipelineCache(SQLiteWrapper):
                 self._col_parameters: "TEXT NOT NULL",
                 self._col_pipeline_name: "TEXT NOT NULL",
                 self._col_auto_restart: "BOOLEAN NOT NULL",
-                self._col_auto_record_video: "BOOLEAN NOT NULL",
                 self._col_updated_at: "INTEGER NOT NULL",
                 self._col_created_at: "INTEGER NOT NULL",
             },
@@ -61,7 +59,6 @@ class PipelineCache(SQLiteWrapper):
         payload: Any,
         parameters: Dict[str, Any],
         auto_restart: bool = True,
-        auto_record_video: bool = True,
         sqlite_connection: Optional[sqlite3.Connection] = None,
     ):
         payload_str = json.dumps(payload)
@@ -75,7 +72,6 @@ class PipelineCache(SQLiteWrapper):
                     self._col_parameters: parameters_str,
                     self._col_pipeline_name: pipeline_name,
                     self._col_auto_restart: auto_restart,
-                    self._col_auto_record_video: auto_record_video,
                     self._col_updated_at: int(time.time()),
                     self._col_created_at: int(time.time()),
                 },
