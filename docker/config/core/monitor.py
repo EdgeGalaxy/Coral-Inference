@@ -732,15 +732,22 @@ class PipelineMonitor:
 
     async def get_pipeline_ids(self):
         """获取所有活跃pipeline的ID"""
-        pipelines = (await self.stream_manager_client.list_pipelines()).pipelines
+        list_resp = await self.stream_manager_client.list_pipelines()
+        pipelines = getattr(list_resp, 'pipelines', []) or []
         pipeline_ids_mapper = {}
         for pipeline_id in pipelines:
+            if not isinstance(pipeline_id, str) or not pipeline_id:
+                continue
             if pipeline_id in self.pipeline_ids_mapper:
                 pipeline_ids_mapper[pipeline_id] = self.pipeline_ids_mapper[pipeline_id]
                 continue
-            restore_pipeline_id = self.pipeline_cache.get_restore_pipeline_id(pipeline_id)['pipeline_id']
-            if restore_pipeline_id is None:
+            restore_info = self.pipeline_cache.get_restore_pipeline_id(pipeline_id)
+            if not restore_info:
                 logger.warning(f"Monitor Pipeline {pipeline_id} not found in cache")
+                continue
+            restore_pipeline_id = restore_info.get('pipeline_id')
+            if not restore_pipeline_id:
+                logger.warning(f"Monitor Pipeline {pipeline_id} missing pipeline_id in cache record")
                 continue
             self.pipeline_ids_mapper[pipeline_id] = restore_pipeline_id
             pipeline_ids_mapper[pipeline_id] = restore_pipeline_id
