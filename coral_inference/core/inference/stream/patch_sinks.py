@@ -49,7 +49,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8, 
         max_total_size: int = 10 * 1024 * 1024 * 1024, 
         video_field_name: str = None, 
-        codec: str = "mp4v", 
+        codec: str = "avc1", 
         resolution: int = 360
     ):
         return cls(
@@ -73,7 +73,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8,  # 最大磁盘使用率 80%
         max_total_size: int = 10 * 1024 * 1024 * 1024,  # 最大总大小 10GB
         video_field_name: str = None,
-        codec: str = "mp4v",
+        codec: str = "avc1",
         resolution: int = 360  # 默认360p，最高支持1080p
     ):
         output_directory = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
@@ -101,9 +101,17 @@ class TimeBasedVideoSink:
         self.total_size = 0
         self.actual_fps = None
         self.actual_resolution = None
+        # FPS 动态估计相关状态
+        self.measured_fps = 10.0
+        self._fps_window_start: Optional[datetime] = None
+        self._frames_in_current_second: int = 0
         
         # 文件管理
         self.video_files = []
+        # 当前进程内已创建的分段数量（用于判断是否为首段）
+        self.created_segment_count = 0
+        # 预加载已存在的视频文件，纳入统一清理逻辑
+        self._load_existing_video_files()
         
         logger.info(f"TimeBasedVideoSink initialized for pipeline {pipeline_id}")
         
@@ -138,6 +146,8 @@ class TimeBasedVideoSink:
         self.frame_count = 0
         
         logger.info(f"New video segment prepared: {self.current_segment_path}")
+        # 更新分段计数
+        self.created_segment_count += 1
     
     def _ensure_writer_initialized(self, image: np.ndarray):
         """确保VideoWriter已初始化，使用实际图像尺寸"""
@@ -169,15 +179,31 @@ class TimeBasedVideoSink:
         else:
             self.actual_resolution = (width, height)
         
-        # 使用默认fps或从video_info获取
-        self.actual_fps = self.video_info.fps if self.video_info else 25.0
+        # 使用首段默认 fps = 10，其后使用动态测得的 fps（按每秒统计）
+        if self.created_segment_count == 1:
+            # 第一段视频固定 10fps
+            self.actual_fps = 10.0
+        else:
+            # 其后根据测得的每秒帧数动态设置
+            dynamic_fps = self.measured_fps if self.measured_fps and self.measured_fps > 0 else 10.0
+            # 合理约束范围，避免编码器异常
+            self.actual_fps = float(max(1.0, min(dynamic_fps, 60.0)))
         
         # 创建视频写入器
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*self.codec)
-        except TypeError:
-            logger.warning(f"Codec {self.codec} not supported, falling back to mp4v")
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        def _select_fourcc(preferred: str):
+            candidates = [preferred, "avc1", "H264", "mp4v", "XVID"]
+            for c in candidates:
+                try:
+                    return c, cv2.VideoWriter_fourcc(*c)
+                except Exception as e:
+                    logger.warning(f"use VideoWriter_fourcc: {c} raise error: {e}")
+                    continue
+            # 理论上不会到这
+            return "mp4v", cv2.VideoWriter_fourcc(*"mp4v")
+
+        selected_codec, fourcc = _select_fourcc(self.codec)
+        if selected_codec != self.codec:
+            logger.warning(f"Codec {self.codec} not available, using {selected_codec}")
             
         self.current_writer = cv2.VideoWriter(
             self.current_segment_path,
@@ -207,6 +233,46 @@ class TimeBasedVideoSink:
                 
         except Exception as e:
             logger.error(f"Error checking disk space: {e}")
+    
+    def _parse_created_time_from_filename(self, filename: str) -> Optional[datetime]:
+        """从文件名解析创建时间（期望格式：YYYYmmddHHMMSS.mp4），失败返回 None"""
+        try:
+            name, _ = os.path.splitext(filename)
+            return datetime.strptime(name, "%Y%m%d%H%M%S")
+        except Exception:
+            return None
+
+    def _load_existing_video_files(self) -> None:
+        """扫描输出目录，将已存在的视频加入 video_files，并累加 total_size"""
+        try:
+            if not os.path.isdir(self.output_directory):
+                return
+            loaded_count = 0
+            for filename in os.listdir(self.output_directory):
+                if not filename.lower().endswith(".mp4"):
+                    continue
+                path = os.path.join(self.output_directory, filename)
+                if not os.path.isfile(path):
+                    continue
+                try:
+                    size = os.path.getsize(path)
+                    created_time = self._parse_created_time_from_filename(filename)
+                    if created_time is None:
+                        created_time = datetime.fromtimestamp(os.path.getctime(path))
+                    self.video_files.append({
+                        'path': path,
+                        'size': size,
+                        'created_time': created_time,
+                        'frame_count': 0,
+                    })
+                    self.total_size += size
+                    loaded_count += 1
+                except Exception as e:
+                    logger.warning(f"Skip existing video file due to error: {path}, err: {e}")
+            if loaded_count:
+                logger.info(f"Loaded {loaded_count} existing video files from {self.output_directory}")
+        except Exception as e:
+            logger.error(f"Error loading existing video files: {e}")
     
     def _cleanup_oldest_files(self):
         """清理最旧的视频文件"""
@@ -272,6 +338,18 @@ class TimeBasedVideoSink:
                 # 从预测结果中提取图像
                 image = self._extract_image_from_prediction(prediction)
                 image = image if isinstance(image, np.ndarray) else frame.image
+
+                # 动态 FPS 统计：按秒累计计数
+                now = datetime.now()
+                if self._fps_window_start is None:
+                    self._fps_window_start = now
+                elapsed = (now - self._fps_window_start).total_seconds()
+                if elapsed >= 1.0:
+                    # 完成一个整秒窗口，更新测得 fps
+                    self.measured_fps = float(self._frames_in_current_second)
+                    self._fps_window_start = now
+                    self._frames_in_current_second = 0
+                self._frames_in_current_second += 1
 
                 # 确保VideoWriter已初始化
                 self._ensure_writer_initialized(image)

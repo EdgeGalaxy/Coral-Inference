@@ -5,12 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PipelineSelector } from '@/components/pipeline-selector'
 import { VideoStream } from '@/components/video-stream'
+import { RecordingsViewer } from '@/components/recordings-viewer'
 import { MetricsModal } from '@/components/metrics-modal'
+import { RecordingsModal } from '@/components/recordings-modal'
 import { BarChart, Settings, Info } from 'lucide-react'
 
 export default function Home() {
   const [selectedPipeline, setSelectedPipeline] = useState<string | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
+  const [showRecordings, setShowRecordings] = useState(false)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -107,18 +110,19 @@ export default function Home() {
                   <Button
                     variant="outline"
                     className="w-full justify-start"
+                    onClick={() => setShowRecordings(true)}
                     disabled={!selectedPipeline}
                   >
                     <Settings className="h-4 w-4 mr-2" />
-                    Pipeline设置
+                    查看录像
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* 右侧视频流区域 */}
-          <div className="lg:col-span-8">
+          {/* 右侧视频流 */}
+          <div className="lg:col-span-8 space-y-6">
             <VideoStream pipelineId={selectedPipeline} />
           </div>
         </div>
@@ -139,6 +143,12 @@ export default function Home() {
         isOpen={showMetrics}
         onClose={() => setShowMetrics(false)}
         pipelineId={selectedPipeline}
+      />
+
+      <RecordingsModal
+        isOpen={showRecordings}
+        onClose={() => setShowRecordings(false)}
+        defaultPipelineId={selectedPipeline}
       />
     </div>
   )

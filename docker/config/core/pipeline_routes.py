@@ -92,6 +92,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         except Exception:
             pipeline_id = None
         if pipeline_id:
+            req_dict.get("processing_configuration", {}).get("workflows_parameters", {}).update({"used_pipeline_id": pipeline_id})
             pipeline_cache.create(
                 pipeline_id,
                 pipeline_name,

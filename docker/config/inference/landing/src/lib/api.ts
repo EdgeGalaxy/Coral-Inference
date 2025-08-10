@@ -57,6 +57,20 @@ export interface WebRTCOfferResponse {
   type: string
 }
 
+// 录像文件类型
+export interface VideoFileItem {
+  filename: string
+  size_bytes: number
+  created_at: number
+  modified_at: number
+}
+
+export interface VideoListResponse {
+  status: string
+  files?: VideoFileItem[]
+  error?: string
+}
+
 export interface PipelineStatusResponse {
   status: string
   context: {
@@ -356,6 +370,30 @@ export const monitorApi = {
       console.error('获取监控器状态失败:', error)
       throw error
     }
+  },
+}
+
+// 录像相关API
+export const recordingApi = {
+  // 列出录像文件
+  async list(pipelineId: string, outputDirectory: string = 'records'): Promise<VideoFileItem[]> {
+    const params = new URLSearchParams()
+    if (outputDirectory) params.append('output_directory', outputDirectory)
+    const endpoint = `/inference_pipelines/${pipelineId}/videos${params.toString() ? `?${params.toString()}` : ''}`
+    const res = await apiRequest<VideoListResponse>(endpoint)
+    if (res.status !== 'success') {
+      throw new ApiError(res.error || '获取录像列表失败')
+    }
+    return res.files || []
+  },
+
+  // 构造可播放的视频URL（支持Range）
+  videoUrl(pipelineId: string, filename: string, outputDirectory: string = 'records'): string {
+    const API_BASE_URL = getApiBaseUrl()
+    const params = new URLSearchParams()
+    if (outputDirectory) params.append('output_directory', outputDirectory)
+    const query = params.toString()
+    return `${API_BASE_URL}/inference_pipelines/${encodeURIComponent(pipelineId)}/videos/${encodeURIComponent(filename)}${query ? `?${query}` : ''}`
   },
 }
 

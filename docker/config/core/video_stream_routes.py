@@ -1,11 +1,14 @@
 import asyncio
 import base64
-from typing import Dict, Optional, Union
+import os
+import mimetypes
+from typing import Dict, Optional, Union, List, Tuple
 
 import numpy as np
 import cv2
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header
 from fastapi.exceptions import HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from inference.core.interfaces.http.http_api import with_route_exceptions
@@ -30,6 +33,7 @@ from coral_inference.core.inference.camera.patch_video_source import (
 )
 from loguru import logger
 from core.pipeline_cache import PipelineCache
+from inference.core.env import MODEL_CACHE_DIR
 
 
 class VideoCaptureRequest(BaseModel):
@@ -61,11 +65,30 @@ class WebRTCStreamResponse(BaseModel):
     error: Optional[str] = None
 
 
+class VideoFileItem(BaseModel):
+    filename: str
+    size_bytes: int
+    created_at: int
+    modified_at: int
+
+
+class VideoListResponse(BaseModel):
+    status: str
+    files: List[VideoFileItem] | None = None
+    error: Optional[str] = None
+
+
 def register_video_stream_routes(
     app: FastAPI,
     stream_manager_client: StreamManagerClient,
     pipeline_cache: PipelineCache,
 ) -> None:
+    def _map_pipeline_id(pipeline_id: str) -> str:
+        mapped = pipeline_cache.get(pipeline_id)
+        if mapped:
+            return mapped["restore_pipeline_id"]
+        return pipeline_id
+
     @app.post(
         "/inference_pipelines/{pipeline_id}/offer",
         response_model=InitializeWebRTCPipelineResponse,
@@ -116,6 +139,126 @@ def register_video_stream_routes(
         finally:
             if video_producer:
                 video_producer.release()
+
+    @app.get(
+        "/inference_pipelines/{pipeline_id}/videos",
+        response_model=VideoListResponse,
+        summary="列出录像文件",
+        description="列出指定 pipeline 的录像文件列表",
+    )
+    @with_route_exceptions
+    async def list_pipeline_videos(
+        pipeline_id: str,
+        output_directory: str = "records",
+    ) -> VideoListResponse:
+        try:
+            # real_id = _map_pipeline_id(pipeline_id)
+            base_dir = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
+            if not os.path.isdir(base_dir):
+                return VideoListResponse(status="success", files=[])
+
+            items: List[VideoFileItem] = []
+            for name in os.listdir(base_dir):
+                if not name.lower().endswith(".mp4"):
+                    continue
+                file_path = os.path.join(base_dir, name)
+                if not os.path.isfile(file_path):
+                    continue
+                stat = os.stat(file_path)
+                items.append(
+                    VideoFileItem(
+                        filename=name,
+                        size_bytes=stat.st_size,
+                        created_at=int(stat.st_ctime),
+                        modified_at=int(stat.st_mtime),
+                    )
+                )
+
+            # 按创建时间倒序
+            items.sort(key=lambda x: x.created_at, reverse=True)
+            return VideoListResponse(status="success", files=items)
+        except Exception as e:
+            return VideoListResponse(status="error", error=str(e))
+
+    def _parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
+        try:
+            # 形如: bytes=start-end
+            units, _, range_spec = range_header.partition("=")
+            if units.strip().lower() != "bytes":
+                return 0, file_size - 1
+            start_str, _, end_str = range_spec.partition("-")
+            if start_str == "":
+                # suffix range
+                suffix = int(end_str)
+                start = max(file_size - suffix, 0)
+                end = file_size - 1
+            else:
+                start = int(start_str)
+                end = int(end_str) if end_str else file_size - 1
+            if start > end or start < 0 or end >= file_size:
+                return 0, file_size - 1
+            return start, end
+        except Exception:
+            return 0, file_size - 1
+
+    def _file_iterator(path: str, start: int, end: int, chunk_size: int = 1024 * 1024):
+        with open(path, "rb") as f:
+            f.seek(start)
+            bytes_left = end - start + 1
+            while bytes_left > 0:
+                read_size = min(chunk_size, bytes_left)
+                data = f.read(read_size)
+                if not data:
+                    break
+                bytes_left -= len(data)
+                yield data
+
+    @app.get(
+        "/inference_pipelines/{pipeline_id}/videos/{filename}",
+        summary="按文件名流式返回录像",
+        description="支持 Range 的视频流播放",
+    )
+    @with_route_exceptions
+    async def stream_pipeline_video(
+        pipeline_id: str,
+        filename: str,
+        output_directory: str = "records",
+        range: Optional[str] = Header(default=None, alias="Range"),
+    ):
+        safe_name = os.path.basename(filename)
+        real_id = _map_pipeline_id(pipeline_id)
+        base_dir = os.path.join(MODEL_CACHE_DIR, "pipelines", real_id, output_directory)
+        file_path = os.path.join(base_dir, safe_name)
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="文件不存在")
+
+        file_size = os.path.getsize(file_path)
+        content_type = mimetypes.guess_type(file_path)[0] or "video/mp4"
+
+        if range:
+            start, end = _parse_range_header(range, file_size)
+            headers = {
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(end - start + 1),
+            }
+            return StreamingResponse(
+                _file_iterator(file_path, start, end),
+                status_code=206,
+                media_type=content_type,
+                headers=headers,
+            )
+        else:
+            headers = {
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+            }
+            return StreamingResponse(
+                _file_iterator(file_path, 0, file_size - 1),
+                status_code=200,
+                media_type=content_type,
+                headers=headers,
+            )
 
     @app.post(
         "/inference_pipelines/video/webrtc-stream",
