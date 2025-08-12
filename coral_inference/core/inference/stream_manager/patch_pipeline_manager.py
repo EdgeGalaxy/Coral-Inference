@@ -33,7 +33,8 @@ from coral_inference.core.inference.camera.webrtc_manager import (
     WebRTCConnectionConfig,
     create_webrtc_connection_with_pipeline_buffer,
 )
-from coral_inference.core.inference.stream.patch_sinks import TimeBasedVideoSink
+from coral_inference.core.inference.stream.video_sink import TimeBasedVideoSink
+from coral_inference.core.inference.stream.metric_sink import MetricSink
 
 
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
@@ -199,6 +200,20 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
                 video_field_name=video_record_sink_configuration.image_input_name,
             )
             sinks.append(video_sink.on_prediction)
+        
+        # 处理 MetricSink（视频指标采集）
+        metrics_cfg = parsed_payload.processing_configuration.workflows_parameters.get("video_mertics_sink_configuration", {})
+        try:
+            is_open = bool(metrics_cfg.get("is_open", True))
+            selected_fields = metrics_cfg.get("selected_fields") or []
+            if is_open:
+                metric_sink = MetricSink.init(pipeline_id=pipeline_id, selected_fields=selected_fields)
+                sinks.append(metric_sink.on_prediction)
+                logger.info(f"MetricSink attached. fields={selected_fields}")
+            else:
+                logger.info("MetricSink disabled by config.")
+        except Exception as metric_error:
+            logger.warning(f"Failed to configure MetricSink: {metric_error}")
         
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
