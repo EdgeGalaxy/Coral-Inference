@@ -179,6 +179,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
         is_file_source = parsed_payload.processing_configuration.workflows_parameters.get("is_file_source")
         video_reference = parsed_payload.video_configuration.video_reference
+        # source_buffer_filling_strategy = parsed_payload.video_configuration.source_buffer_filling_strategy if not is_file_source else None
+        # source_buffer_consumption_strategy = parsed_payload.video_configuration.source_buffer_consumption_strategy if not is_file_source else None
         pipeline_id = used_pipeline_id or self._pipeline_id
         
         # 创建基础的 InMemoryBufferSink
@@ -193,12 +195,11 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
         # 检查是否启用录像功能
         if video_record_sink_configuration.is_open:
+            video_info = None
             if is_file_source:
                 first_video = video_reference[0] if isinstance(video_reference, list) else video_reference
                 if os.path.exists(first_video):
                     video_info = sv.VideoInfo.from_video_path(first_video)
-                else:
-                    video_info = None
 
             video_sink = TimeBasedVideoSink.init(
                 pipeline_id=pipeline_id,
@@ -227,6 +228,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
+
+        print(f'workflow_with_init: {parsed_payload.model_dump()}')
         
         self._inference_pipeline = InferencePipeline.init_with_workflow(
             video_reference=parsed_payload.video_configuration.video_reference,

@@ -50,9 +50,6 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
 
         processing_configuration = req_dict.get("processing_configuration") or {}
         workflows_parameters = processing_configuration.get("workflows_parameters") or {}
-        # 手动删除这两个传参，让系统自动选择
-        req_dict.get('video_configuration', {}).pop('source_buffer_filling_strategy')
-        req_dict.get('video_configuration', {}).pop('source_buffer_consumption_strategy')
 
         is_file_source =  workflows_parameters.get("is_file_source", False)
 
@@ -74,6 +71,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         auto_restart = workflows_parameters.get("auto_restart", not is_file_source)
 
         patched_request = InitialisePipelinePayload(**req_dict)
+        print(f'patch_requests: {patched_request}')
         resp = await stream_manager_client.initialise_pipeline(
             initialisation_request=patched_request
         )

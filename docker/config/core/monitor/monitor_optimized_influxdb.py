@@ -31,7 +31,7 @@ class BackgroundTaskQueue:
     """后台任务队列，处理非关键的异步任务"""
     
     def __init__(self, max_workers: int = 5):
-        self.queue = asyncio.Queue()
+        self.queue = None  # 延迟创建
         self.workers = []
         self.max_workers = max_workers
         self.running = False
