@@ -9,6 +9,7 @@ import supervision as sv
 from loguru import logger
 
 from inference.core.interfaces.camera.entities import VideoFrame
+from inference.core.interfaces.stream.sinks import render_statistics
 from inference.core.env import MODEL_CACHE_DIR
 from inference.core.workflows.execution_engine.entities.base import WorkflowImageData
 
@@ -51,7 +52,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8,  # 最大磁盘使用率 80%
         max_total_size: int = 10 * 1024 * 1024 * 1024,  # 最大总大小 10GB
         video_field_name: str = None,
-        codec: str = "avc1",
+        codec: str = "MJPG",
         resolution: int = 360  # 默认360p，最高支持1080p
     ):
         output_directory = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
@@ -312,7 +313,7 @@ class TimeBasedVideoSink:
                 # logger.info(f"frame {frame} prediction: {prediction}")
                 if frame is None and prediction is None:
                     continue
-                    
+
                 # 从预测结果中提取图像
                 image = self._extract_image_from_prediction(prediction)
                 image = image if isinstance(image, np.ndarray) else frame.image
@@ -335,6 +336,7 @@ class TimeBasedVideoSink:
                 # 调整图像尺寸到目标分辨率
                 if self.target_resolution and image is not None:
                     image = cv2.resize(image, self.actual_resolution)
+                    image = render_statistics(image, frame_timestamp=frame.frame_timestamp, fps=self.actual_fps)
                 
                 # 写入视频
                 if self.current_writer is not None and image is not None:
