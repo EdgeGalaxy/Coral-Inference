@@ -10,6 +10,7 @@ export ENABLE_STREAM_API=${ENABLE_STREAM_API:-true}
 export PWD=${PWD:-/app}
 # 禁用推理路由
 export LEGACY_ROUTE_ENABLED=False
+export DISABLE_VERSION_CHECK=True
 
 echo "Starting services with supervisor..."
 echo "HOST: $HOST"
@@ -80,5 +81,9 @@ graceful_shutdown() {
 # 捕获终止信号
 trap 'graceful_shutdown' SIGTERM SIGINT
 
+
+echo "Using console-based logging configuration"
+CONFIG_FILE="$PWD/supervisord.conf"
+
 # 启动supervisor
-exec supervisord -c $PWD/supervisord.conf 
+exec supervisord -c $CONFIG_FILE

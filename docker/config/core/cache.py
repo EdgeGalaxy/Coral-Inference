@@ -14,7 +14,7 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     InitialisePipelinePayload,
 )
 
-from coral_inference.core import logger
+from loguru import logger
 
 
 class PipelineCache(SQLiteWrapper):

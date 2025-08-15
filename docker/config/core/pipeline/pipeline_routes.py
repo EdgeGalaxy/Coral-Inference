@@ -19,8 +19,8 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     ConsumeResultsPayload,
 )
 
-from core.pipeline_cache import PipelineCache
-from core.pipeline_utils import (
+from ..cache import PipelineCache
+from ..pipeline.pipeline_utils import (
     download_videos_parallel,
     cleanup_pipeline_videos,
 )

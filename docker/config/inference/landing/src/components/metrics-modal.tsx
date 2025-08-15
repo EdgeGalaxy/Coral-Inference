@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { RefreshCw, TrendingUp, Activity, Clock, AlertCircle, Zap, Timer, BarChart3 } from 'lucide-react'
-import { pipelineApi, apiUtils, MetricsResponse } from '@/lib/api'
+import { pipelineApi, apiUtils, monitorApi, MetricsResponse } from '@/lib/api'
 
 interface MetricsModalProps {
   isOpen: boolean
@@ -28,6 +28,21 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
   const [metricsData, setMetricsData] = useState<MetricsResponse | null>(null)
   const [timeRange, setTimeRange] = useState<string>('5')
   const [refreshing, setRefreshing] = useState(false)
+  const [influxDBStatus, setInfluxDBStatus] = useState<any>(null)
+  const [useInfluxDB, setUseInfluxDB] = useState(true)
+
+  // 检查InfluxDB状态
+  const checkInfluxDBStatus = async () => {
+    try {
+      const status = await monitorApi.getInfluxDBStatus()
+      setInfluxDBStatus(status)
+      setUseInfluxDB(status.enabled && status.connected)
+      console.log('InfluxDB状态:', status)
+    } catch (error) {
+      console.error('获取InfluxDB状态失败:', error)
+      setUseInfluxDB(false)
+    }
+  }
 
   // 获取指标数据
   const fetchMetrics = async () => {
@@ -40,7 +55,24 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
       console.log(`正在获取Pipeline ${pipelineId} 的指标数据...`)
       
       const minutes = parseInt(timeRange)
-      const response = await pipelineApi.getMetrics(pipelineId, { minutes })
+      
+      let response: MetricsResponse
+      
+      if (useInfluxDB && influxDBStatus?.connected) {
+        // 尝试使用InfluxDB获取数据
+        try {
+          console.log('使用InfluxDB获取指标数据')
+          response = await pipelineApi.getMetrics(pipelineId, { minutes })
+        } catch (influxError) {
+          console.warn('InfluxDB获取失败，降级使用文件数据:', influxError)
+          // 如果InfluxDB失败，降级使用原始接口
+          response = await pipelineApi.getMetrics(pipelineId, { minutes })
+        }
+      } else {
+        // 使用原始接口获取数据
+        console.log('使用文件系统获取指标数据')
+        response = await pipelineApi.getMetrics(pipelineId, { minutes })
+      }
       
       console.log('获取到指标数据:', response)
       setMetricsData(response)
@@ -60,12 +92,19 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
     setRefreshing(false)
   }
 
+  // 当弹窗打开时检查InfluxDB状态
+  useEffect(() => {
+    if (isOpen) {
+      checkInfluxDBStatus()
+    }
+  }, [isOpen])
+
   // 当弹窗打开或pipelineId变化时获取数据
   useEffect(() => {
-    if (isOpen && pipelineId) {
+    if (isOpen && pipelineId && influxDBStatus !== null) {
       fetchMetrics()
     }
-  }, [isOpen, pipelineId, timeRange])
+  }, [isOpen, pipelineId, timeRange, influxDBStatus])
 
   // 转换指标数据为图表格式
   const convertToChartData = (data: MetricsResponse) => {
@@ -222,9 +261,19 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
           <DialogTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5" />
             Pipeline 指标监控
-            <Badge variant="outline" className="ml-auto">
-              API模式
-            </Badge>
+            <div className="ml-auto flex items-center gap-2">
+              {influxDBStatus && (
+                <Badge 
+                  variant="outline" 
+                  className={`${influxDBStatus.connected ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}
+                >
+                  InfluxDB: {influxDBStatus.connected ? '已连接' : '未连接'}
+                </Badge>
+              )}
+              <Badge variant="outline">
+                {useInfluxDB ? '实时模式' : '文件模式'}
+              </Badge>
+            </div>
           </DialogTitle>
           <DialogDescription>
             {pipelineId ? `Pipeline: ${pipelineId}` : '未选择Pipeline'}
@@ -248,9 +297,28 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                     <SelectItem value="15">15分钟</SelectItem>
                     <SelectItem value="30">30分钟</SelectItem>
                     <SelectItem value="60">1小时</SelectItem>
+                    <SelectItem value="120">2小时</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {influxDBStatus && (
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`w-2 h-2 rounded-full ${
+                    influxDBStatus.healthy ? 'bg-green-500' : influxDBStatus.connected ? 'bg-yellow-500' : 'bg-red-500'
+                  }`} />
+                  <span className="text-muted-foreground">
+                    {influxDBStatus.connected ? 
+                      (influxDBStatus.healthy ? '健康' : '连接异常') : 
+                      '断开连接'
+                    }
+                  </span>
+                  {influxDBStatus.buffer_size !== undefined && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      缓冲: {influxDBStatus.buffer_size}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             
             <Button
@@ -534,7 +602,16 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
               {/* 数据统计 */}
               <Card>
                 <CardHeader>
-                  <CardTitle>数据统计</CardTitle>
+                  <CardTitle className="flex items-center justify-between">
+                    数据统计
+                    <div className="flex items-center gap-2">
+                      {influxDBStatus && (
+                        <Badge variant={influxDBStatus.connected ? 'default' : 'secondary'} className="text-xs">
+                          {influxDBStatus.connected ? 'InfluxDB' : 'File'}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -569,6 +646,36 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                       <div className="text-sm text-muted-foreground">时间范围</div>
                     </div>
                   </div>
+                  {influxDBStatus && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">数据源:</span>
+                          <span className="ml-1 font-medium">
+                            {influxDBStatus.connected ? influxDBStatus.url : '本地文件'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">数据库:</span>
+                          <span className="ml-1 font-medium">
+                            {influxDBStatus.bucket || 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">测量表:</span>
+                          <span className="ml-1 font-medium">
+                            {influxDBStatus.measurement || 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">缓冲区:</span>
+                          <span className="ml-1 font-medium">
+                            {influxDBStatus.buffer_size || 0} 条
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

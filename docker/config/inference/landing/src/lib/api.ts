@@ -302,10 +302,11 @@ export const monitorApi = {
       const response = await apiRequest<{
         status: string
         data: {
-          total_size_gb: number
-          used_size_gb: number
-          free_size_gb: number
+          output_dir: string
+          current_size_gb: number
+          max_size_gb: number
           usage_percentage: number
+          free_space_gb: number
         }
       }>('/monitor/disk-usage')
       
@@ -360,14 +361,94 @@ export const monitorApi = {
           output_dir: string
           poll_interval: number
           pipeline_count: number
-          cached_metrics_count: number
-          cached_results_count: number
+          is_healthy: boolean
+          performance_metrics: {
+            poll_count: number
+            poll_duration: number
+            last_poll_time: number
+            influxdb_enabled: boolean
+            error_count: number
+            last_error_time: number
+            background_queue_size: number
+            results_cache_size: number
+            influxdb_buffer_size?: number
+          }
+          influxdb_enabled: boolean
+          influxdb_connected: boolean
         }
       }>('/monitor/status')
       
       return response.data
     } catch (error) {
       console.error('获取监控器状态失败:', error)
+      throw error
+    }
+  },
+
+  // 获取Pipeline指标摘要（从 InfluxDB）
+  async getMetricsSummary(
+    pipelineId: string,
+    timeRange: { start?: number; end?: number; minutes?: number; aggregation_window?: string } = { minutes: 30 }
+  ) {
+    try {
+      const params = new URLSearchParams()
+      
+      if (timeRange.start) params.append('start_time', timeRange.start.toString())
+      if (timeRange.end) params.append('end_time', timeRange.end.toString())
+      if (timeRange.minutes) params.append('minutes', timeRange.minutes.toString())
+      if (timeRange.aggregation_window) params.append('aggregation_window', timeRange.aggregation_window)
+      
+      const queryString = params.toString()
+      const endpoint = `/inference_pipelines/${pipelineId}/metrics/summary${queryString ? `?${queryString}` : ''}`
+      
+      const response = await apiRequest<{
+        status: string
+        data: {
+          pipeline_id: string
+          start_time: string
+          end_time: string
+          aggregation_window: string
+          data: Array<{
+            time?: string
+            source_id?: string
+            avg_latency?: number
+            max_p99_latency?: number
+            avg_fps?: number
+            total_frames?: number
+            total_dropped?: number
+            [key: string]: any
+          }>
+        }
+      }>(endpoint)
+      
+      return response.data
+    } catch (error) {
+      console.error('获取Pipeline指标摘要失败:', error)
+      throw error
+    }
+  },
+
+  // 获取 InfluxDB 连接状态
+  async getInfluxDBStatus() {
+    try {
+      const response = await apiRequest<{
+        status: string
+        data: {
+          enabled: boolean
+          connected: boolean
+          healthy?: boolean
+          url?: string
+          bucket?: string
+          measurement?: string
+          buffer_size?: number
+          last_flush_time?: number
+          message?: string
+        }
+      }>('/monitor/influxdb/status')
+      
+      return response.data
+    } catch (error) {
+      console.error('获取InfluxDB状态失败:', error)
       throw error
     }
   },

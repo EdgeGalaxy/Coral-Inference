@@ -32,8 +32,9 @@ from coral_inference.core.inference.camera.patch_video_source import (
     PatchedCV2VideoFrameProducer,
 )
 from loguru import logger
-from core.pipeline_cache import PipelineCache
 from inference.core.env import MODEL_CACHE_DIR
+
+from ..cache import PipelineCache
 
 
 class VideoCaptureRequest(BaseModel):
