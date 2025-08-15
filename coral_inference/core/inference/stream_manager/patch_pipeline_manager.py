@@ -2,6 +2,7 @@ import os
 import time
 from functools import partial
 
+import supervision as sv
 from pydantic import ValidationError
 
 from loguru import logger
@@ -10,7 +11,7 @@ from inference.core.exceptions import (
     RoboflowAPINotAuthorizedError,
     RoboflowAPINotNotFoundError,
 )
-from inference.core.interfaces.camera.entities import VideoFrame
+from inference.core.interfaces.camera.video_source import CV2VideoFrameProducer
 from inference.core.interfaces.stream.inference_pipeline import InferencePipeline
 from inference.core.interfaces.stream.sinks import InMemoryBufferSink, multi_sink
 from inference.core.interfaces.stream.watchdog import BasePipelineWatchDog
@@ -176,6 +177,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         self._watchdog = BasePipelineWatchDog()
         parsed_payload = InitialisePipelinePayload.model_validate(payload)
         used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
+        is_file_source = parsed_payload.processing_configuration.workflows_parameters.get("is_file_source")
+        video_reference = parsed_payload.video_configuration.video_reference
         pipeline_id = used_pipeline_id or self._pipeline_id
         
         # 创建基础的 InMemoryBufferSink
@@ -190,10 +193,17 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
         # 检查是否启用录像功能
         if video_record_sink_configuration.is_open:
+            if is_file_source:
+                first_video = video_reference[0] if isinstance(video_reference, list) else video_reference
+                if os.path.exists(first_video):
+                    video_info = sv.VideoInfo.from_video_path(first_video)
+                else:
+                    video_info = None
+
             video_sink = TimeBasedVideoSink.init(
                 pipeline_id=pipeline_id,
                 output_directory=video_record_sink_configuration.output_directory,
-                video_info=video_record_sink_configuration.video_info,
+                video_info=video_info or video_record_sink_configuration.video_info,
                 segment_duration=video_record_sink_configuration.segment_duration,
                 max_disk_usage=video_record_sink_configuration.max_disk_usage,
                 max_total_size=video_record_sink_configuration.max_total_size,

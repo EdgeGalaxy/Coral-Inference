@@ -17,7 +17,7 @@ from inference.models.utils import ROBOFLOW_MODEL_TYPES
 from coral_inference.core import runtime_platform
 from loguru import logger
 
-from .core.route import init_app
+from core.route import init_app
 
 
 model_registry = RoboflowModelRegistry(ROBOFLOW_MODEL_TYPES)

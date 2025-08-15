@@ -126,10 +126,17 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     )   
 
     app.mount(
+        "/mount/pipelines",
+        StaticFiles(directory=f"{MODEL_CACHE_DIR}/pipelines", html=True),
+        name="coral_pipeline_root"
+    )
+
+    app.mount(
         "/",
         StaticFiles(directory="./inference/landing/out", html=True),
         name="coral_root",
     )
+
 
     return pipeline_cache
 

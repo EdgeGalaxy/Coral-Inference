@@ -28,8 +28,8 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8, 
         max_total_size: int = 10 * 1024 * 1024 * 1024, 
         video_field_name: str = None, 
-        codec: str = "avc1", 
-        resolution: int = 360
+        codec: str = "MJPG", 
+        resolution: int = 480
     ):
         return cls(
             pipeline_id,
@@ -92,7 +92,7 @@ class TimeBasedVideoSink:
         # 预加载已存在的视频文件，纳入统一清理逻辑
         self._load_existing_video_files()
         
-        logger.info(f"TimeBasedVideoSink initialized for pipeline {pipeline_id}")
+        logger.info(f"TimeBasedVideoSink initialized for pipeline {pipeline_id}, video_info: {self.video_info}")
         
     def _get_segment_path(self, timestamp: datetime) -> str:
         """生成当前分段视频文件路径"""
