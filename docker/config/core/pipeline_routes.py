@@ -48,11 +48,13 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
     async def initialise(request: Request) -> CommandResponse:
         req_dict: Dict[str, any] = await request.json()
 
-        is_file_source = (
-            req_dict.get("processing_configuration", {})
-            .get("workflows_parameters", {})
-            .get("is_file_source", False)
-        )
+        processing_configuration = req_dict.get("processing_configuration") or {}
+        workflows_parameters = processing_configuration.get("workflows_parameters") or {}
+        # 手动删除这两个传参，让系统自动选择
+        req_dict.get('video_configuration', {}).pop('source_buffer_filling_strategy')
+        req_dict.get('video_configuration', {}).pop('source_buffer_consumption_strategy')
+
+        is_file_source =  workflows_parameters.get("is_file_source", False)
 
         if is_file_source:
             video_references = (
@@ -65,21 +67,11 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
                 ] = downloaded_paths
 
         output_image_fields = (
-            req_dict.get("processing_configuration", {})
-            .get("workflows_parameters", {})
-            .get("output_image_fields", [])
+            workflows_parameters.get("output_image_fields", [])
             + ["source_image"]
         )
-        pipeline_name = (
-            req_dict.get("processing_configuration", {})
-            .get("workflows_parameters", {})
-            .get("pipeline_name", "")
-        )
-        auto_restart = (
-            req_dict.get("processing_configuration", {})
-            .get("workflows_parameters", {})
-            .get("auto_restart", not is_file_source)
-        )
+        pipeline_name = workflows_parameters.get("pipeline_name", "")
+        auto_restart = workflows_parameters.get("auto_restart", not is_file_source)
 
         patched_request = InitialisePipelinePayload(**req_dict)
         resp = await stream_manager_client.initialise_pipeline(
@@ -92,7 +84,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         except Exception:
             pipeline_id = None
         if pipeline_id:
-            req_dict.get("processing_configuration", {}).get("workflows_parameters", {}).update({"used_pipeline_id": pipeline_id})
+            workflows_parameters.update({"used_pipeline_id": pipeline_id})
             pipeline_cache.create(
                 pipeline_id,
                 pipeline_name,
