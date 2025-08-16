@@ -74,16 +74,16 @@ class WebRTCManager:
             if not any(
                 isinstance(v, WorkflowImageData) for v in prediction.values()
             ) or not config.stream_output:
-                result_frame = render_statistics(video_frame.image.copy(), video_frame.frame_timestamp)
+                result_frame = render_statistics(video_frame.image.copy(), video_frame.frame_timestamp, fps=None)
                 return result_frame
             
             if (config.stream_output[0] not in prediction or 
                 not isinstance(prediction[config.stream_output[0]], WorkflowImageData)):
                 for output in prediction.values():
                     if isinstance(output, WorkflowImageData):
-                        return render_statistics(output.numpy_image, video_frame.frame_timestamp)
+                        return render_statistics(output.numpy_image, video_frame.frame_timestamp, fps=None)
             
-            return render_statistics(prediction[config.stream_output[0]].numpy_image, video_frame.frame_timestamp)
+            return render_statistics(prediction[config.stream_output[0]].numpy_image, video_frame.frame_timestamp, fps=None)
         
         return get_video_frame
     
