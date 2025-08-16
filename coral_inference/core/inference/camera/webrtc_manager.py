@@ -9,6 +9,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from inference.core.interfaces.camera.entities import VideoFrame
+from inference.core.interfaces.stream.sinks import render_statistics
 from inference.core.interfaces.stream_manager.manager_app.entities import (
     WebRTCOffer,
     WebRTCTURNConfig,
@@ -73,16 +74,16 @@ class WebRTCManager:
             if not any(
                 isinstance(v, WorkflowImageData) for v in prediction.values()
             ) or not config.stream_output:
-                result_frame = video_frame.image.copy()
+                result_frame = render_statistics(video_frame.image.copy(), video_frame.frame_timestamp)
                 return result_frame
             
             if (config.stream_output[0] not in prediction or 
                 not isinstance(prediction[config.stream_output[0]], WorkflowImageData)):
                 for output in prediction.values():
                     if isinstance(output, WorkflowImageData):
-                        return output.numpy_image
+                        return render_statistics(output.numpy_image, video_frame.frame_timestamp)
             
-            return prediction[config.stream_output[0]].numpy_image
+            return render_statistics(prediction[config.stream_output[0]].numpy_image, video_frame.frame_timestamp)
         
         return get_video_frame
     

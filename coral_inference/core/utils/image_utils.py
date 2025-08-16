@@ -24,13 +24,13 @@ def merge_frames(frames: Dict[str, np.ndarray], layout: str = 'grid', target_hei
     if target_height is None:
         if n_frames == 1:
             # 单个视频，默认480p
-            target_height = 480
+            target_height = 720
         elif n_frames == 2 and layout == 'horizontal':
             # 两个视频在一排，默认520p
-            target_height = 520
+            target_height = 960
         else:
             # 多个视频（grid布局），默认720p
-            target_height = 720
+            target_height = 1080
     
     if n_frames == 1:
         # 单个视频，调整到目标分辨率
