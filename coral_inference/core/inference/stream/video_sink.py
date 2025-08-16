@@ -28,7 +28,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8, 
         max_total_size: int = 10 * 1024 * 1024 * 1024, 
         video_field_name: str = None, 
-        codec: str = "MJPG", 
+        codec: str = "avc1", 
         resolution: int = 480
     ):
         return cls(
@@ -52,7 +52,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8,  # 最大磁盘使用率 80%
         max_total_size: int = 10 * 1024 * 1024 * 1024,  # 最大总大小 10GB
         video_field_name: str = None,
-        codec: str = "MJPG",
+        codec: str = "avc1",
         resolution: int = 360  # 默认360p，最高支持1080p
     ):
         output_directory = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
@@ -158,8 +158,11 @@ class TimeBasedVideoSink:
         else:
             self.actual_resolution = (width, height)
         
-        # 使用首段默认 fps = 10，其后使用动态测得的 fps（按每秒统计）
-        if self.created_segment_count == 1:
+        # 优先使用 video_info 中的 fps，如果没有则使用动态测得的 fps
+        if self.video_info and hasattr(self.video_info, 'fps') and self.video_info.fps > 0:
+            # 使用 video_info 中的 fps
+            self.actual_fps = float(self.video_info.fps)
+        elif self.created_segment_count == 1:
             # 第一段视频固定 10fps
             self.actual_fps = 10.0
         else:

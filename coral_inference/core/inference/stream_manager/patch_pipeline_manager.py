@@ -21,6 +21,8 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     ErrorType,
     OperationStatus,
     InitialisePipelinePayload,
+    BufferFillingStrategy,
+    BufferConsumptionStrategy
 )
 from inference.core.interfaces.stream_manager.manager_app.inference_pipeline_manager import InferencePipelineManager
 from inference.core.workflows.errors import WorkflowSyntaxError
@@ -179,8 +181,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
         is_file_source = parsed_payload.processing_configuration.workflows_parameters.get("is_file_source")
         video_reference = parsed_payload.video_configuration.video_reference
-        # source_buffer_filling_strategy = parsed_payload.video_configuration.source_buffer_filling_strategy if not is_file_source else None
-        # source_buffer_consumption_strategy = parsed_payload.video_configuration.source_buffer_consumption_strategy if not is_file_source else None
+        source_buffer_filling_strategy = parsed_payload.video_configuration.source_buffer_filling_strategy if not is_file_source else BufferFillingStrategy.WAIT
+        source_buffer_consumption_strategy = parsed_payload.video_configuration.source_buffer_consumption_strategy if not is_file_source else BufferConsumptionStrategy.LAZY
         pipeline_id = used_pipeline_id or self._pipeline_id
         
         # 创建基础的 InMemoryBufferSink
@@ -229,8 +231,6 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
 
-        print(f'workflow_with_init: {parsed_payload.model_dump()}')
-        
         self._inference_pipeline = InferencePipeline.init_with_workflow(
             video_reference=parsed_payload.video_configuration.video_reference,
             workflow_specification=parsed_payload.processing_configuration.workflow_specification,
@@ -242,8 +242,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
             on_prediction=chained_sink,
             max_fps=parsed_payload.video_configuration.max_fps,
             watchdog=self._watchdog,
-            source_buffer_filling_strategy=parsed_payload.video_configuration.source_buffer_filling_strategy,
-            source_buffer_consumption_strategy=parsed_payload.video_configuration.source_buffer_consumption_strategy,
+            source_buffer_filling_strategy=source_buffer_filling_strategy,
+            source_buffer_consumption_strategy=source_buffer_consumption_strategy,
             video_source_properties=parsed_payload.video_configuration.video_source_properties,
             workflows_thread_pool_workers=parsed_payload.processing_configuration.workflows_thread_pool_workers,
             cancel_thread_pool_tasks_on_exit=parsed_payload.processing_configuration.cancel_thread_pool_tasks_on_exit,
