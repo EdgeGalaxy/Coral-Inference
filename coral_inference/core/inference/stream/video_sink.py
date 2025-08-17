@@ -1,5 +1,6 @@
 
 import os
+import subprocess
 from datetime import datetime
 from typing import Union, List, Optional, Dict, Any
 
@@ -28,7 +29,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8, 
         max_total_size: int = 10 * 1024 * 1024 * 1024, 
         video_field_name: str = None, 
-        codec: str = "avc1", 
+        codec: str = "mp4v", 
         resolution: int = 480
     ):
         return cls(
@@ -52,7 +53,7 @@ class TimeBasedVideoSink:
         max_disk_usage: float = 0.8,  # 最大磁盘使用率 80%
         max_total_size: int = 10 * 1024 * 1024 * 1024,  # 最大总大小 10GB
         video_field_name: str = None,
-        codec: str = "avc1",
+        codec: str = "mp4v",
         resolution: int = 360  # 默认360p，最高支持1080p
     ):
         output_directory = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
@@ -392,8 +393,48 @@ class TimeBasedVideoSink:
                     self.total_size += file_size
                     logger.info(f"Final video segment saved: {self.current_segment_path}")
                     
+                    # 步骤 2: 使用 FFmpeg 强制重新编码为 Web 兼容格式
+                    self._optimize_video_for_web(self.current_segment_path)
+                    
         except Exception as e:
             logger.error(f"Error releasing TimeBasedVideoSink: {e}")
+    
+    def _optimize_video_for_web(self, video_path: str):
+        """使用 FFmpeg 优化视频为 Web 兼容格式"""
+        try:
+            temp_output_path = video_path + ".temp.mp4"
+            final_output_path = video_path
+            
+            # 先重命名原文件为临时文件
+            os.rename(video_path, temp_output_path)
+            
+            print(f"\n步骤 2/2: 强制重新编码为 Web 兼容格式...")
+            command = [
+                'ffmpeg',
+                '-i', temp_output_path,
+                '-c:v', 'libx264',        # 使用 H.264 编码器
+                '-pix_fmt', 'yuv420p',    # 强制使用兼容的像素格式
+                '-movflags', '+faststart',# 将 moov 移到头部
+                '-y',
+                final_output_path
+            ]
+            
+            subprocess.run(command, check=True, capture_output=True, text=True)
+            logger.info(f"视频优化成功！文件保存在: {final_output_path}")
+            os.remove(temp_output_path)
+            
+        except subprocess.CalledProcessError as e:
+            logger.error("FFmpeg 优化失败:")
+            logger.error(f"错误信息: {e.stderr}")
+            logger.error(f"临时文件 {temp_output_path} 已保留，供调试使用。")
+            # 如果优化失败，恢复原文件
+            if os.path.exists(temp_output_path):
+                os.rename(temp_output_path, final_output_path)
+        except Exception as e:
+            logger.error(f"视频优化过程中发生错误: {e}")
+            # 如果优化失败，恢复原文件
+            if os.path.exists(temp_output_path):
+                os.rename(temp_output_path, final_output_path)
     
     def get_video_files_info(self) -> List[Dict[str, Any]]:
         """获取所有视频文件的信息"""
