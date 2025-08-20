@@ -177,7 +177,8 @@ def register_video_stream_routes(
 
             # 按创建时间倒序
             items.sort(key=lambda x: x.created_at, reverse=True)
-            return VideoListResponse(status="success", files=items)
+            # 取从第二个开始，第一个正在写入，无法预览
+            return VideoListResponse(status="success", files=items[1:])
         except Exception as e:
             return VideoListResponse(status="error", error=str(e))
 
@@ -213,53 +214,6 @@ def register_video_stream_routes(
                     break
                 bytes_left -= len(data)
                 yield data
-
-    @app.get(
-        "/inference_pipelines/{pipeline_id}/videos/{filename}",
-        summary="按文件名流式返回录像",
-        description="支持 Range 的视频流播放",
-    )
-    @with_route_exceptions
-    async def stream_pipeline_video(
-        pipeline_id: str,
-        filename: str,
-        output_directory: str = "records",
-        range: Optional[str] = Header(default=None, alias="Range"),
-    ):
-        safe_name = os.path.basename(filename)
-        real_id = _map_pipeline_id(pipeline_id)
-        base_dir = os.path.join(MODEL_CACHE_DIR, "pipelines", real_id, output_directory)
-        file_path = os.path.join(base_dir, safe_name)
-        if not os.path.isfile(file_path):
-            raise HTTPException(status_code=404, detail="文件不存在")
-
-        file_size = os.path.getsize(file_path)
-        content_type = mimetypes.guess_type(file_path)[0] or "video/mp4"
-
-        if range:
-            start, end = _parse_range_header(range, file_size)
-            headers = {
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(end - start + 1),
-            }
-            return StreamingResponse(
-                _file_iterator(file_path, start, end),
-                status_code=206,
-                media_type=content_type,
-                headers=headers,
-            )
-        else:
-            headers = {
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(file_size),
-            }
-            return StreamingResponse(
-                _file_iterator(file_path, 0, file_size - 1),
-                status_code=200,
-                media_type=content_type,
-                headers=headers,
-            )
 
     @app.post(
         "/inference_pipelines/video/webrtc-stream",
