@@ -1,6 +1,7 @@
 
 import os
 import subprocess
+import threading
 from datetime import datetime
 from typing import Union, List, Optional, Dict, Any
 
@@ -108,8 +109,12 @@ class TimeBasedVideoSink:
             self.current_writer.release()
             self.current_writer = None
             
-            # 记录文件信息
+            # 记录文件信息并优化视频
             if self.current_segment_path and os.path.exists(self.current_segment_path):
+                # 先优化视频为Web兼容格式
+                self._optimize_video_for_web(self.current_segment_path)
+                
+                # 重新获取优化后的文件大小
                 file_size = os.path.getsize(self.current_segment_path)
                 self.video_files.append({
                     'path': self.current_segment_path,
@@ -118,7 +123,7 @@ class TimeBasedVideoSink:
                     'frame_count': self.frame_count
                 })
                 self.total_size += file_size
-                logger.info(f"Video segment created: {self.current_segment_path}, size: {file_size} bytes")
+                logger.info(f"Video segment created and optimized: {self.current_segment_path}, size: {file_size} bytes")
         
         # 创建新分段路径
         self.current_segment_path = self._get_segment_path(timestamp)
@@ -381,8 +386,12 @@ class TimeBasedVideoSink:
                 self.current_writer.release()
                 self.current_writer = None
                 
-                # 记录最后一个分段
+                # 记录最后一个分段并优化
                 if self.current_segment_path and os.path.exists(self.current_segment_path):
+                    # 优化最后一个分段
+                    self._optimize_video_for_web(self.current_segment_path)
+                    
+                    # 重新获取优化后的文件大小
                     file_size = os.path.getsize(self.current_segment_path)
                     self.video_files.append({
                         'path': self.current_segment_path,
@@ -391,50 +400,68 @@ class TimeBasedVideoSink:
                         'frame_count': self.frame_count
                     })
                     self.total_size += file_size
-                    logger.info(f"Final video segment saved: {self.current_segment_path}")
-                    
-                    # 步骤 2: 使用 FFmpeg 强制重新编码为 Web 兼容格式
-                    self._optimize_video_for_web(self.current_segment_path)
+                    logger.info(f"Final video segment saved and optimized: {self.current_segment_path}")
                     
         except Exception as e:
             logger.error(f"Error releasing TimeBasedVideoSink: {e}")
     
     def _optimize_video_for_web(self, video_path: str):
-        """使用 FFmpeg 优化视频为 Web 兼容格式"""
-        try:
-            temp_output_path = video_path + ".temp.mp4"
-            final_output_path = video_path
-            
-            # 先重命名原文件为临时文件
-            os.rename(video_path, temp_output_path)
-            
-            print(f"\n步骤 2/2: 强制重新编码为 Web 兼容格式...")
-            command = [
-                'ffmpeg',
-                '-i', temp_output_path,
-                '-c:v', 'libx264',        # 使用 H.264 编码器
-                '-pix_fmt', 'yuv420p',    # 强制使用兼容的像素格式
-                '-movflags', '+faststart',# 将 moov 移到头部
-                '-y',
-                final_output_path
-            ]
-            
-            subprocess.run(command, check=True, capture_output=True, text=True)
-            logger.info(f"视频优化成功！文件保存在: {final_output_path}")
-            os.remove(temp_output_path)
-            
-        except subprocess.CalledProcessError as e:
-            logger.error("FFmpeg 优化失败:")
-            logger.error(f"错误信息: {e.stderr}")
-            logger.error(f"临时文件 {temp_output_path} 已保留，供调试使用。")
-            # 如果优化失败，恢复原文件
-            if os.path.exists(temp_output_path):
-                os.rename(temp_output_path, final_output_path)
-        except Exception as e:
-            logger.error(f"视频优化过程中发生错误: {e}")
-            # 如果优化失败，恢复原文件
-            if os.path.exists(temp_output_path):
-                os.rename(temp_output_path, final_output_path)
+        """使用 FFmpeg 优化视频为 Web 兼容格式 - 后台执行不阻塞"""
+        def _optimize_worker(video_path: str):
+            """后台优化工作线程"""
+            if not os.path.exists(video_path):
+                logger.error(f"Video file not found: {video_path}")
+                return
+                
+            try:
+                temp_output_path = video_path + ".temp.mp4"
+                final_output_path = video_path
+                
+                # 先重命名原文件为临时文件
+                os.rename(video_path, temp_output_path)
+                
+                logger.info(f"Background optimizing video for web compatibility: {video_path}")
+                command = [
+                    'ffmpeg',
+                    '-i', temp_output_path,
+                    '-c:v', 'libx264',        # 使用 H.264 编码器
+                    '-pix_fmt', 'yuv420p',    # 强制使用兼容的像素格式
+                    '-movflags', '+faststart',# 将 moov 移到头部
+                    '-y',                     # 覆盖输出文件
+                    final_output_path
+                ]
+                
+                result = subprocess.run(command, check=True, capture_output=True, text=True)
+                logger.info(f"Background video optimization successful: {final_output_path}")
+                
+                # 删除临时文件
+                if os.path.exists(temp_output_path):
+                    os.remove(temp_output_path)
+                    
+            except subprocess.CalledProcessError as e:
+                logger.error("Background FFmpeg optimization failed:")
+                logger.error(f"Command: {' '.join(command)}")
+                logger.error(f"Error output: {e.stderr}")
+                # 如果优化失败，恢复原文件
+                if os.path.exists(temp_output_path):
+                    os.rename(temp_output_path, final_output_path)
+                    logger.info(f"Restored original file: {final_output_path}")
+            except Exception as e:
+                logger.error(f"Error during background video optimization: {e}")
+                # 如果优化失败，恢复原文件
+                if os.path.exists(temp_output_path):
+                    os.rename(temp_output_path, final_output_path)
+                    logger.info(f"Restored original file: {final_output_path}")
+        
+        # 启动后台线程执行优化，不阻塞当前进程
+        optimization_thread = threading.Thread(
+            target=_optimize_worker, 
+            args=(video_path,),
+            daemon=True,  # 设置为守护线程，主进程退出时自动结束
+            name=f"VideoOptimizer-{os.path.basename(video_path)}"
+        )
+        optimization_thread.start()
+        logger.info(f"Started background video optimization thread for: {video_path}")
     
     def get_video_files_info(self) -> List[Dict[str, Any]]:
         """获取所有视频文件的信息"""
