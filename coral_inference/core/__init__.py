@@ -1,6 +1,5 @@
 from inference.core.models import roboflow
 from inference.core.logger import logger
-from inference.core.managers import pingback
 from inference.core.interfaces.stream import sinks
 from inference.core.interfaces.camera import video_source 
 from inference.core.interfaces.stream_manager.api import stream_manager_client
@@ -15,7 +14,6 @@ from coral_inference.core.inference.stream_manager import patch_app
 from coral_inference.core.inference.stream_manager import patch_manager_client
 from coral_inference.core.inference.stream_manager import patch_pipeline_manager
 from coral_inference.core.inference.stream import patch_sinks
-from coral_inference.core.managers import patch_pingback
 
 runtime_platform = get_runtime_platform()
 
@@ -49,7 +47,6 @@ else:
         "runtime_platform is {runtime_platform}, using default OnnxRoboflowInferenceModel"
     )
 
-pingback.PingbackInfo = patch_pingback.PatchPingbackInfo
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)
 sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(sinks.InMemoryBufferSink.on_prediction)
 video_source.CV2VideoFrameProducer = patch_video_source.PatchedCV2VideoFrameProducer
