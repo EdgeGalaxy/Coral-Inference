@@ -1,6 +1,6 @@
 
 
-from coral_inference.core.models.decorators import extend_method_after
+from inference.core.managers.metrics import get_system_info
 from coral_inference.core.env import (
     INFLUXDB_METRICS_BUCKET,
     INFLUXDB_METRICS_ORG,
@@ -9,13 +9,13 @@ from coral_inference.core.env import (
 )
 
 
-@extend_method_after
-def extend_system_info(result):
+def patch_get_system_info():
+    system_info = get_system_info()
     metrics = {
         'metrics_host': INFLUXDB_METRICS_URL,
         'metrics_token': INFLUXDB_METRICS_TOKEN,
         'metrics_org': INFLUXDB_METRICS_ORG,
         'metrics_bucket': INFLUXDB_METRICS_BUCKET
     }
-    result.update(metrics)
-    return result
+    system_info.update(metrics)
+    return system_info
