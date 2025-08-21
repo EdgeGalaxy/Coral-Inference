@@ -1,4 +1,9 @@
-
+from coral_inference.core.env import (
+    INFLUXDB_METRICS_BUCKET,
+    INFLUXDB_METRICS_ORG, 
+    INFLUXDB_METRICS_TOKEN, 
+    INFLUXDB_METRICS_URL
+)
 
 
 def get_influxdb_metrics():
