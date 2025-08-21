@@ -26,21 +26,21 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
 
     pipeline_cache = PipelineCache(stream_manager_client=stream_manager_client)
 
-    @app.on_event("startup")
-    async def delayed_restore():
-        while True:
-            try:
-                pipelines = await stream_manager_client.list_pipelines()
-            except Exception as e:
-                await asyncio.sleep(2)
-                logger.error(f"Error call list pipelines: {e}")
-            else:
-                logger.info(f'fetch pipelines data: {pipelines} & start restore pipeline cache!')
-                await pipeline_cache.restore()
+    # @app.on_event("startup")
+    # async def delayed_restore():
+    #     while True:
+    #         try:
+    #             pipelines = await stream_manager_client.list_pipelines()
+    #         except Exception as e:
+    #             await asyncio.sleep(2)
+    #             logger.error(f"Error call list pipelines: {e}")
+    #         else:
+    #             logger.info(f'fetch pipelines data: {pipelines} & start restore pipeline cache!')
+    #             await pipeline_cache.restore()
                 
-                # 启动pipeline结果监控 - 使用新的优化监控器
-                await start_monitor_with_pipelines()
-                break
+    #             # 启动pipeline结果监控 - 使用新的优化监控器
+    #             await start_monitor_with_pipelines()
+    #             break
     
     async def start_monitor_with_pipelines():
         """启动带有 pipeline 支持的监控器"""
@@ -125,11 +125,15 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         allow_headers=["*"],
     )   
 
+    os.makedirs(f"{MODEL_CACHE_DIR}/pipelines", exist_ok=True)
+
     app.mount(
         "/mount/pipelines",
         StaticFiles(directory=f"{MODEL_CACHE_DIR}/pipelines", html=True),
         name="coral_pipeline_root"
     )
+
+    os.makedirs("inference/landing/out", exist_ok=True)
 
     app.mount(
         "/",
