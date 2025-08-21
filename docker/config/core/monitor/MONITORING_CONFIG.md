@@ -31,10 +31,10 @@
 | 环境变量 | 默认值 | 描述 |
 |---------|--------|------|
 | `ENABLE_INFLUXDB` | `true` | 是否启用 InfluxDB |
-| `METRICS_URL` | - | InfluxDB 服务器地址 |
-| `METRICS_TOKEN` | - | InfluxDB 认证令牌 |
-| `METRICS_ORG` | - | InfluxDB 组织名 |
-| `METRICS_BUCKET` | - | InfluxDB 数据库/桶名称 |
+| `INFLUXDB_METRICS_URL` | - | InfluxDB 服务器地址 |
+| `INFLUXDB_METRICS_TOKEN` | - | InfluxDB 认证令牌 |
+| `INFLUXDB_METRICS_ORG` | - | InfluxDB 组织名 |
+| `INFLUXDB_METRICS_BUCKET` | - | InfluxDB 数据库/桶名称 |
 | `METRICS_BATCH_SIZE` | `100` | 指标批量写入大小 |
 | `METRICS_FLUSH_INTERVAL` | `10` | 指标刷新间隔（秒） |
 
@@ -48,10 +48,10 @@ environment:
   - ENABLE_INFLUXDB=true
   
   # InfluxDB 连接信息
-  - METRICS_URL=http://influxdb:8086
-  - METRICS_TOKEN=your-influxdb-token-here
-  - METRICS_ORG=coral-inference
-  - METRICS_BUCKET=pipeline_metrics
+  - INFLUXDB_METRICS_URL=http://influxdb:8086
+  - INFLUXDB_METRICS_TOKEN=your-influxdb-token-here
+  - INFLUXDB_METRICS_ORG=coral-inference
+  - INFLUXDB_METRICS_BUCKET=pipeline_metrics
   
   # 性能调优
   - METRICS_BATCH_SIZE=200
@@ -70,10 +70,10 @@ PIPELINE_MAX_BACKGROUND_WORKERS=8
 
 # InfluxDB 配置
 ENABLE_INFLUXDB=true
-METRICS_URL=http://localhost:8086
-METRICS_TOKEN=your-token
-METRICS_ORG=your-org
-METRICS_BUCKET=metrics
+INFLUXDB_METRICS_URL=http://localhost:8086
+INFLUXDB_METRICS_TOKEN=your-token
+INFLUXDB_METRICS_ORG=your-org
+INFLUXDB_METRICS_BUCKET=metrics
 METRICS_BATCH_SIZE=100
 METRICS_FLUSH_INTERVAL=10
 

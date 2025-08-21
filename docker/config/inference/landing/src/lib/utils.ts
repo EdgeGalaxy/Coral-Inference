@@ -5,36 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/**
- * 获取API基础URL
- */
-export const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:9001'
-    }
-    return `http://${hostname}:9001`
-  }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
-}
-
-/**
- * 格式化延迟时间
- */
-export const formatLatency = (latency: number): string => {
-  if (latency < 1) {
-    return `${(latency * 1000).toFixed(0)}ms`
-  }
-  return `${latency.toFixed(2)}s`
-}
-
-/**
- * 格式化FPS
- */
-export const formatFPS = (fps: number): string => {
-  return `${fps.toFixed(1)} FPS`
-}
 
 /**
  * 获取状态颜色

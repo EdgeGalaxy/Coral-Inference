@@ -1,11 +1,18 @@
 // API服务 - 连接后端接口
+const isIpAddress = (host: string): boolean => {
+  // IPv4 pattern
+  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  // IPv6 pattern (simplified)
+  const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
+  return ipv4Pattern.test(host) || ipv6Pattern.test(host);
+};
 // 环境变量配置
 const getApiBaseUrl = (): string => {
   // 在浏览器环境中，动态获取当前页面的主机名
   // 这样可以确保API请求与前端页面在同一个域下，解决了内网访问的问题
   if (typeof window !== 'undefined') {
     // 使用与浏览器地址栏相同的协议和主机名，端口固定为9001
-    return `${window.location.protocol}//${window.location.hostname}:9001`
+    return `${window.location.protocol}//${window.location.hostname}${isIpAddress(window.location.hostname) ? ':9001' : ''}`;
   }
 
   // 在服务器端环境(SSR/SSG)或构建时，使用环境变量或默认值

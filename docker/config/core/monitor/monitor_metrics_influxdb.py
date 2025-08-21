@@ -225,10 +225,10 @@ class InfluxDBMetricsCollector:
         self.validator = DataValidator()
         
         # 从环境变量或参数获取 InfluxDB 配置
-        self.influxdb_url = influxdb_url or os.getenv("METRICS_URL", "")
-        self.influxdb_token = influxdb_token or os.getenv("METRICS_TOKEN", "")
-        self.influxdb_org = influxdb_org or os.getenv("METRICS_ORG", "")
-        self.influxdb_bucket = influxdb_bucket or os.getenv("METRICS_BUCKET", "")
+        self.influxdb_url = influxdb_url or os.getenv("INFLUXDB_METRICS_URL", "")
+        self.influxdb_token = influxdb_token or os.getenv("INFLUXDB_METRICS_TOKEN", "")
+        self.influxdb_org = influxdb_org or os.getenv("INFLUXDB_METRICS_ORG", "")
+        self.influxdb_bucket = influxdb_bucket or os.getenv("INFLUXDB_METRICS_BUCKET", "")
         
         # 初始化 InfluxDB 客户端
         self._init_influxdb_client()
