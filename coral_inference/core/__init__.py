@@ -5,6 +5,7 @@ from inference.core.interfaces.camera import video_source
 from inference.core.interfaces.stream_manager.api import stream_manager_client
 from inference.core.interfaces.stream_manager.manager_app import app
 from inference.core.interfaces.stream_manager.manager_app import inference_pipeline_manager
+from inference.core.managers import metrics
 
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
@@ -13,6 +14,7 @@ from coral_inference.core.inference.stream_manager import patch_app
 from coral_inference.core.inference.stream_manager import patch_manager_client
 from coral_inference.core.inference.stream_manager import patch_pipeline_manager
 from coral_inference.core.inference.stream import patch_sinks
+from coral_inference.core.managers import patch_metrics
 
 runtime_platform = get_runtime_platform()
 
@@ -46,6 +48,7 @@ else:
         "runtime_platform is {runtime_platform}, using default OnnxRoboflowInferenceModel"
     )
 
+metrics.get_system_info = patch_metrics.extend_system_info(metrics.get_system_info)
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)
 sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(sinks.InMemoryBufferSink.on_prediction)
 video_source.CV2VideoFrameProducer = patch_video_source.PatchedCV2VideoFrameProducer
