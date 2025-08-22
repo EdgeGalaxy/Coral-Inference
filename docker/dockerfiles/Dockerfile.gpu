@@ -67,11 +67,6 @@ RUN apt-get update -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 InfluxDB3
-RUN curl -O https://www.influxdata.com/d/install_influxdb3.sh \
-    && sh install_influxdb3.sh \
-    && rm install_influxdb3.sh
-
 # 设置 Python 链接
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
@@ -103,9 +98,8 @@ ENV VERSION_CHECK_MODE=continuous \
     # CORE_MODEL_OWLV2_ENABLED=False \
     ENABLE_STREAM_API=True \
     # ENABLE_WORKFLOWS_PROFILING=True \
-    ENABLE_PROMETHEUS=True \
+    ENABLE_PROMETHEUS=False \
     METRICS_ENABLED=True \
-    CURRENT_INFERENCE_PLATFORM=onnx \
-    INFLUXDB3_DATA_DIR=/root/.influxdb3
+    CURRENT_INFERENCE_PLATFORM=onnx
 
 ENTRYPOINT ["./entrypoint.sh"]
