@@ -175,8 +175,7 @@ class InfluxDBMetricsCollector:
         measurement: str = "pipeline_metrics",
         influxdb_url: Optional[str] = None,
         influxdb_token: Optional[str] = None,
-        influxdb_org: Optional[str] = None,
-        influxdb_bucket: Optional[str] = None,
+        influxdb_database: Optional[str] = None,
         batch_size: int = 100,
         flush_interval: float = 10,
         enable_file_backup: bool = True,
@@ -192,8 +191,7 @@ class InfluxDBMetricsCollector:
             measurement: InfluxDB measurement 名称
             influxdb_url: InfluxDB 服务器 URL
             influxdb_token: InfluxDB 认证 token
-            influxdb_org: InfluxDB 组织名
-            influxdb_bucket: InfluxDB bucket/database 名
+            influxdb_database: InfluxDB 数据库名
             batch_size: 批量写入大小
             flush_interval: 强制刷新间隔（秒）
             enable_file_backup: 是否启用文件备份（InfluxDB 不可用时）
@@ -227,8 +225,7 @@ class InfluxDBMetricsCollector:
         # 从环境变量或参数获取 InfluxDB 配置
         self.influxdb_url = influxdb_url or os.getenv("INFLUXDB_METRICS_URL", "")
         self.influxdb_token = influxdb_token or os.getenv("INFLUXDB_METRICS_TOKEN", "")
-        self.influxdb_org = influxdb_org or os.getenv("INFLUXDB_METRICS_ORG", "")
-        self.influxdb_bucket = influxdb_bucket or os.getenv("INFLUXDB_METRICS_BUCKET", "")
+        self.influxdb_database = influxdb_database or os.getenv("INFLUXDB_METRICS_DATABASE", "")
         
         # 初始化 InfluxDB 客户端
         self._init_influxdb_client()
@@ -238,9 +235,9 @@ class InfluxDBMetricsCollector:
         
     def _init_influxdb_client(self):
         """初始化 InfluxDB3 客户端"""
-        if not all([self.influxdb_url, self.influxdb_token, self.influxdb_bucket]):
+        if not all([self.influxdb_url, self.influxdb_token, self.influxdb_database]):
             logger.warning(
-                "InfluxDB 配置不完整 (需要 URL/TOKEN/BUCKET)。"
+                "InfluxDB 配置不完整 (需要 URL/TOKEN/DATABASE)。"
                 "Metrics 将保存到本地文件。"
             )
             self.enabled = False
@@ -253,10 +250,9 @@ class InfluxDBMetricsCollector:
         for retry in range(max_retries):
             try:
                 self.client = InfluxDBClient3(
-                    token=self.influxdb_token,
-                    org=self.influxdb_org,
                     host=self.influxdb_url,
-                    database=self.influxdb_bucket,
+                    token=self.influxdb_token,
+                    database=self.influxdb_database,
                 )
                 
                 # 测试连接
@@ -267,7 +263,7 @@ class InfluxDBMetricsCollector:
                 self.connection_manager = ConnectionManager(self.client)
                 logger.info(
                     f"InfluxDB3 客户端初始化成功: "
-                    f"host={self.influxdb_url}, database={self.influxdb_bucket}"
+                    f"host={self.influxdb_url}, database={self.influxdb_database}"
                 )
                 return
                 

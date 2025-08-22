@@ -6,7 +6,6 @@ from inference.core.interfaces.stream_manager.api import stream_manager_client
 from inference.core.interfaces.stream_manager.manager_app import app
 from inference.core.interfaces.stream_manager.manager_app import inference_pipeline_manager
 
-
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
 from coral_inference.core.inference.camera import patch_video_source

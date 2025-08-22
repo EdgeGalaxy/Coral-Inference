@@ -88,8 +88,14 @@ RUN apt-get update -y \
         x264 \
         libavcodec-extra \
         ffmpeg \
+        curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 安装 InfluxDB3
+RUN curl -O https://www.influxdata.com/d/install_influxdb3.sh \
+    && sh install_influxdb3.sh \
+    && rm install_influxdb3.sh
 
 # Copy RKNN runtime files
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /usr/include/
@@ -127,6 +133,7 @@ ENV VERSION_CHECK_MODE=continuous \
     ENABLE_STREAM_API=True \
     # ENABLE_WORKFLOWS_PROFILING=True \
     ENABLE_PROMETHEUS=True \
-    CURRENT_INFERENCE_PLATFORM=rknn
+    CURRENT_INFERENCE_PLATFORM=rknn \
+    INFLUXDB3_DATA_DIR=/root/.influxdb3
 
 ENTRYPOINT ["./entrypoint.sh"]

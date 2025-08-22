@@ -15,8 +15,7 @@ from inference.core.interfaces.stream.utils import wrap_in_list
 from coral_inference.core.env import (
     INFLUXDB_METRICS_URL,
     INFLUXDB_METRICS_TOKEN,
-    INFLUXDB_METRICS_ORG,
-    INFLUXDB_METRICS_BUCKET,
+    INFLUXDB_METRICS_DATABASE,
 )
 
 
@@ -81,23 +80,22 @@ class MetricSink:
         self._enabled = False
         self._client: Optional[InfluxDBClient3] = None  # type: ignore
 
-        # InfluxDB 3 使用 host/token/database；这里将 METRICS_BUCKET 作为 database 使用
-        if not (INFLUXDB_METRICS_TOKEN and INFLUXDB_METRICS_URL and INFLUXDB_METRICS_BUCKET):
+        # InfluxDB 3 使用 host/token/database；这里将 METRICS_DATABASE 作为 database 使用
+        if not (INFLUXDB_METRICS_TOKEN and INFLUXDB_METRICS_URL and INFLUXDB_METRICS_DATABASE):
             logger.warning(
-                "Missing InfluxDB env (INFLUXDB_METRICS_URL/INFLUXDB_METRICS_TOKEN/INFLUXDB_METRICS_BUCKET). MetricSink disabled."
+                "Missing InfluxDB env (INFLUXDB_METRICS_URL/INFLUXDB_METRICS_TOKEN/INFLUXDB_METRICS_DATABASE). MetricSink disabled."
             )
             return
 
         try:
             self._client = InfluxDBClient3(
-                token=INFLUXDB_METRICS_TOKEN,
-                org=INFLUXDB_METRICS_ORG,
                 host=INFLUXDB_METRICS_URL,
-                database=INFLUXDB_METRICS_BUCKET,
+                token=INFLUXDB_METRICS_TOKEN,
+                database=INFLUXDB_METRICS_DATABASE,
             )
             self._enabled = True
             logger.info(
-                f"MetricSink (v3) enabled for pipeline_id={pipeline_id}, database={INFLUXDB_METRICS_BUCKET}"
+                f"MetricSink (v3) enabled for pipeline_id={pipeline_id}, database={INFLUXDB_METRICS_DATABASE}"
             )
         except Exception as error:
             logger.exception(f"Failed to initialise InfluxDB 3 client: {error}")

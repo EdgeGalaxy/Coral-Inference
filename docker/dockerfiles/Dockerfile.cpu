@@ -56,8 +56,14 @@ RUN apt-get update -y \
         x264 \
         libavcodec-extra \
         ffmpeg \
+        curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 安装 InfluxDB3
+RUN curl -O https://www.influxdata.com/d/install_influxdb3.sh \
+    && sh install_influxdb3.sh \
+    && rm install_influxdb3.sh
 
 # 从构建阶段复制 Python 包
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
@@ -90,6 +96,7 @@ ENV VERSION_CHECK_MODE=continuous \
     # ENABLE_WORKFLOWS_PROFILING=True \
     ENABLE_PROMETHEUS=True \
     METRICS_ENABLED=True \
-    CURRENT_INFERENCE_PLATFORM=onnx
+    CURRENT_INFERENCE_PLATFORM=onnx \
+    INFLUXDB3_DATA_DIR=/root/.influxdb3
 
 ENTRYPOINT ["./entrypoint.sh"]
