@@ -20,41 +20,6 @@ echo "ENABLE_STREAM_API: $ENABLE_STREAM_API"
 # 创建必要的目录
 mkdir -p $PWD/logs
 
-# 等待外部InfluxDB3容器启动
-echo "Waiting for external InfluxDB3 to be available..."
-for i in {1..30}; do
-    if curl -s http://localhost:8181/health > /dev/null 2>&1; then
-        echo "InfluxDB3 is available"
-        break
-    fi
-    echo "Waiting for InfluxDB3... ($i/30)"
-    sleep 2
-done
-
-# 获取或设置InfluxDB token
-if [ -n "$INFLUXDB_METRICS_TOKEN" ]; then
-    export INFLUXDB_TOKEN="$INFLUXDB_METRICS_TOKEN"
-    echo "Using provided InfluxDB3 token: ${INFLUXDB_TOKEN:0:20}..."
-else
-    echo "No InfluxDB token provided, metrics may not work properly"
-fi
-
-# 初始化InfluxDB3数据库结构（如果token可用）
-if [ -n "$INFLUXDB_TOKEN" ]; then
-    echo "Initializing InfluxDB3 database structure..."
-    
-    # 设置默认数据库名称
-    INFLUXDB_DATABASE=${INFLUXDB_METRICS_DATABASE:-metrics}
-    
-    # 尝试创建数据库（如果不存在）
-    echo "Creating database: $INFLUXDB_DATABASE"
-    # Note: 这里需要使用InfluxDB3 API或客户端工具来创建数据库
-    # 暂时跳过，因为InfluxDB3的数据库创建可能需要不同的方法
-    echo "Database initialization completed (or skipped if already exists)"
-else
-    echo "Skipping InfluxDB3 database initialization due to missing token"
-fi
-
 # 在启动 supervisord 前，强制释放端口 7070 与 9001
 kill_port() {
     local port="$1"

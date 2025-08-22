@@ -480,8 +480,7 @@ class OptimizedPipelineMonitorWithInfluxDB:
         enable_influxdb: bool = True,
         influxdb_url: Optional[str] = None,
         influxdb_token: Optional[str] = None,
-        influxdb_org: Optional[str] = None,
-        influxdb_bucket: Optional[str] = None,
+        influxdb_database: Optional[str] = None,
         metrics_batch_size: int = 100,
         metrics_flush_interval: float = 10
     ):
@@ -519,8 +518,7 @@ class OptimizedPipelineMonitorWithInfluxDB:
                 status_interval=status_interval,
                 influxdb_url=influxdb_url,
                 influxdb_token=influxdb_token,
-                influxdb_org=influxdb_org,
-                influxdb_bucket=influxdb_bucket,
+                influxdb_database=influxdb_database,
                 batch_size=metrics_batch_size,
                 flush_interval=metrics_flush_interval,
                 enable_file_backup=True,
@@ -775,8 +773,7 @@ def setup_optimized_monitor_with_influxdb(
         enable_influxdb: bool = True,
         influxdb_url: Optional[str] = None,
         influxdb_token: Optional[str] = None,
-        influxdb_org: Optional[str] = None,
-        influxdb_bucket: Optional[str] = None,
+        influxdb_database: Optional[str] = None,
         metrics_batch_size: int = 100,
         metrics_flush_interval: float = 10,
         auto_start: bool = True
@@ -824,8 +821,7 @@ def setup_optimized_monitor_with_influxdb(
         enable_influxdb=enable_influxdb,
         influxdb_url=influxdb_url,
         influxdb_token=influxdb_token,
-        influxdb_org=influxdb_org,
-        influxdb_bucket=influxdb_bucket,
+        influxdb_database=influxdb_database,
         metrics_batch_size=metrics_batch_size,
         metrics_flush_interval=metrics_flush_interval
     )
