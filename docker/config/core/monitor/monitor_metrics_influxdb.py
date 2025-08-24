@@ -223,9 +223,9 @@ class InfluxDBMetricsCollector:
         self.validator = DataValidator()
         
         # 从环境变量或参数获取 InfluxDB 配置
-        self.influxdb_url = influxdb_url or os.getenv("INFLUXDB_METRICS_URL", "")
-        self.influxdb_token = influxdb_token or os.getenv("INFLUXDB_METRICS_TOKEN", "")
-        self.influxdb_database = influxdb_database or os.getenv("INFLUXDB_METRICS_DATABASE", "")
+        self.influxdb_url = influxdb_url
+        self.influxdb_token = influxdb_token
+        self.influxdb_database = influxdb_database 
         
         # 初始化 InfluxDB 客户端
         self._init_influxdb_client()
@@ -256,7 +256,7 @@ class InfluxDBMetricsCollector:
                 )
                 
                 # 测试连接
-                self.client.query("SHOW DATABASES LIMIT 1")
+                # self.client.query("SHOW DATABASES LIMIT 1")
                 
                 self.enabled = True
                 # 初始化连接管理器

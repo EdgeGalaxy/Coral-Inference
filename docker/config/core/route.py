@@ -70,6 +70,9 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         
         # InfluxDB 配置
         enable_influxdb = os.environ.get("ENABLE_INFLUXDB", "true").lower() == "true"
+        influxdb_url = os.getenv("INFLUXDB_METRICS_URL", "")
+        influxdb_token =  os.getenv("INFLUXDB_METRICS_TOKEN", "")
+        influxdb_database = os.getenv("INFLUXDB_METRICS_DATABASE", "")
         metrics_batch_size = int(os.environ.get("METRICS_BATCH_SIZE", "100"))
         metrics_flush_interval = float(os.environ.get("METRICS_FLUSH_INTERVAL", "10"))
         
@@ -91,7 +94,10 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
             enable_influxdb=enable_influxdb,
             metrics_batch_size=metrics_batch_size,
             metrics_flush_interval=metrics_flush_interval,
-            auto_start=True  # 自动启动
+            auto_start=True,  # 自动启动
+            influxdb_url=influxdb_url,
+            influxdb_token=influxdb_token,
+            influxdb_database=influxdb_database,
         )
 
         app.state.monitor = monitor
