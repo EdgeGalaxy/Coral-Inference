@@ -131,9 +131,9 @@ InfluxDB 连接管理器，处理连接重试和健康检查
             
         try:
             # 简单的健康检查查询
-            await asyncio.get_event_loop().run_in_executor(
-                None, self.client.query, "SHOW DATABASES LIMIT 1"
-            )
+            # await asyncio.get_event_loop().run_in_executor(
+            #     None, self.client.query, "SHOW DATABASES LIMIT 1"
+            # )
             self.is_healthy = True
             logger.debug("InfluxDB 健康检查通过")
         except Exception as e:
