@@ -403,7 +403,7 @@ class InfluxDBMetricsCollector:
         pipeline_point = pipeline_point.tag("pipeline_id", pipeline_id)
         pipeline_point = pipeline_point.tag("pipeline_name", pipeline_name)
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
-        pipeline_point = pipeline_point.field("throughput", float(inference_throughput))
+        pipeline_point = pipeline_point.field("throughput", str(float(inference_throughput)))
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
         pipeline_point = pipeline_point.time(dt)
         points.append(pipeline_point)
