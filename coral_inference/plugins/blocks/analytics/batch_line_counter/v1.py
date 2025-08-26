@@ -28,8 +28,8 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
         json_schema_extra={  
             "name": "Batch Line Counter",  
             "version": "v1",  
-            "short_description": "Count detections passing lines in batch mode.",  
-            "long_description": "Batch processing version of LineCounter for improved performance.",  
+            "short_description": "多视角模式下计算检测对象通过线段的数量。",  
+            "long_description": "多视角版本的线段计数器，提供更好的性能表现。",  
             "license": "Apache-2.0",  
             "block_type": "analytics",  
         }  
@@ -37,7 +37,8 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
     type: Literal["coral_core/batch_line_counter@v1"]  
       
     images: Selector(kind=[IMAGE_KIND]) = Field(  
-        description="Batch of images to process",  
+        title="图像",
+        description="待处理的图像批次",  
         examples=["$steps.preprocessing.images"],  
     )  
     detections: Selector(  
@@ -46,16 +47,19 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
             INSTANCE_SEGMENTATION_PREDICTION_KIND,  
         ]  
     ) = Field(  
-        description="Batch of detections to count line crossings for.",  
+        title="检测结果",
+        description="用于统计线段穿越次数的检测结果批次。",  
         examples=["$steps.object_detection_model.predictions"],  
     )  
     line_segments: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
-        description="Batch of line segments, each consisting of exactly two points.",  
+        title="线段",
+        description="线段批次，每个线段由两个点组成。",  
         examples=["$inputs.line_zones"],  
     )  
     triggering_anchor: Union[str, Selector(kind=[STRING_KIND])] = Field(  
         default="CENTER",  
-        description="The point on the detection that must cross the line to be counted.",  
+        title="触发锚点",
+        description="检测对象必须穿越线段才能被计数的锚点位置。",  
         examples=["CENTER"],  
     )  
   

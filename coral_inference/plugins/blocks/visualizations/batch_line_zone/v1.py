@@ -37,51 +37,60 @@ class BatchLineCounterZoneVisualizationManifest(WorkflowBlockManifest):
         json_schema_extra={  
             "name": "Batch Line Counter Visualization",  
             "version": "v1",  
-            "short_description": "Apply line zone visualization in batch mode.",  
-            "long_description": "Batch processing version of LineCounterZoneVisualization for improved performance.",  
+            "short_description": "多视角模式下应用线段区域可视化。",  
+            "long_description": "多视角版本的线段计数器区域可视化，提供更好的性能表现。",  
             "license": "Apache-2.0",  
             "block_type": "visualization",  
         }  
     )  
       
     images: Selector(kind=[IMAGE_KIND]) = Field(  
-        description="Batch of images to visualize",  
+        title="图像",
+        description="待可视化的图像批次",  
         examples=["$steps.preprocessing.images"],  
     )  
     zones: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
-        description="Batch of line zones, each consisting of exactly two points.",  
+        title="线段区域",
+        description="线段区域批次，每个区域由两个点组成。",  
         examples=["$inputs.line_zones"],  
     )  
     color: Union[str, Selector(kind=[STRING_KIND])] = Field(  
-        description="Color for the zones.",  
+        title="区域颜色",
+        description="区域的颜色。",  
         default="#5bb573",  
         examples=["WHITE", "$inputs.color"],  
     )  
     thickness: Union[int, Selector(kind=[INTEGER_KIND])] = Field(  
-        description="Thickness of the lines in pixels.",  
+        title="线条粗细",
+        description="线条的像素粗细。",  
         default=2,  
         examples=[2, "$inputs.thickness"],  
     )  
     text_thickness: Union[int, Selector(kind=[INTEGER_KIND])] = Field(  
-        description="Thickness of the text in pixels.",  
+        title="文本粗细",
+        description="文本的像素粗细。",  
         default=1,  
         examples=[1, "$inputs.text_thickness"],  
     )  
     text_scale: Union[float, Selector(kind=[FLOAT_KIND])] = Field(  
-        description="Scale of the text.",  
+        title="文本缩放",
+        description="文本的缩放比例。",  
         default=1.0,  
         examples=[1.0, "$inputs.text_scale"],  
     )  
     count_ins: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
-        description="Batch of count_in values from line counter.",  
+        title="入线计数",
+        description="来自线段计数器的入线计数值批次。",  
         examples=["$steps.batch_line_counter.count_in"],  
     )  
     count_outs: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
-        description="Batch of count_out values from line counter.",  
+        title="出线计数",
+        description="来自线段计数器的出线计数值批次。",  
         examples=["$steps.batch_line_counter.count_out"],  
     )  
     opacity: Union[FloatZeroToOne, Selector(kind=[FLOAT_ZERO_TO_ONE_KIND])] = Field(  
-        description="Transparency of the line overlay.",  
+        title="透明度",
+        description="线段覆盖层的透明度。",  
         default=0.3,  
         examples=[0.3, "$inputs.opacity"],  
     )  
