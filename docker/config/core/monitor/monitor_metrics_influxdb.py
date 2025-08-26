@@ -152,7 +152,7 @@ class InfluxDBMetricsCollector:
     优化的指标收集器，直接写入 InfluxDB3
     
     数据结构设计：
-    - Measurement: pipeline_metrics
+    - Measurement: pipeline_system_metrics
     - Tags:
         - pipeline_id: Pipeline 的唯一标识
         - pipeline_name: Pipeline 名称（从缓存获取）
@@ -175,7 +175,7 @@ class InfluxDBMetricsCollector:
         stream_manager_client: StreamManagerClient,
         pipeline_cache: Optional[PipelineCache] = None,
         status_interval: float = 5,
-        measurement: str = "pipeline_metrics",
+        measurement: str = "pipeline_system_metrics",
         influxdb_url: Optional[str] = None,
         influxdb_token: Optional[str] = None,
         influxdb_database: Optional[str] = None,
