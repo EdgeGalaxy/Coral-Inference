@@ -93,6 +93,16 @@ class MetricSink:
                 token=INFLUXDB_METRICS_TOKEN,
                 database=INFLUXDB_METRICS_DATABASE,
             )
+            
+            # 测试连接
+            try:
+                # 尝试一个简单的查询来验证连接
+                test_result = self._client.query("SELECT 1 as connection_test LIMIT 1")
+                logger.info("MetricSink InfluxDB 连接验证成功")
+            except Exception as test_error:
+                logger.warning(f"MetricSink InfluxDB 连接测试失败: {test_error}")
+                # 对于新数据库，这可能是正常的
+            
             self._enabled = True
             logger.info(
                 f"MetricSink (v3) enabled for pipeline_id={pipeline_id}, database={INFLUXDB_METRICS_DATABASE}"

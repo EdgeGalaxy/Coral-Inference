@@ -130,10 +130,13 @@ InfluxDB 连接管理器，处理连接重试和健康检查
             return self.is_healthy
             
         try:
-            # 简单的健康检查查询
-            # await asyncio.get_event_loop().run_in_executor(
-            #     None, self.client.query, "SHOW DATABASES LIMIT 1"
-            # )
+            # InfluxDB3 使用 SQL 语法进行健康检查
+            # 查询系统表来验证连接
+            await asyncio.get_event_loop().run_in_executor(
+                None, 
+                self.client.query, 
+                "SELECT 1 as health_check LIMIT 1"
+            )
             self.is_healthy = True
             logger.debug("InfluxDB 健康检查通过")
         except Exception as e:
@@ -255,8 +258,15 @@ class InfluxDBMetricsCollector:
                     database=self.influxdb_database,
                 )
                 
-                # 测试连接
-                # self.client.query("SHOW DATABASES LIMIT 1")
+                # 测试连接并验证数据库
+                try:
+                    # InfluxDB3 中数据库在首次写入时自动创建
+                    # 这里通过一个简单的查询来验证连接和数据库访问权限
+                    test_result = self.client.query("SELECT 1 as connection_test LIMIT 1")
+                    logger.info("InfluxDB 连接测试成功")
+                except Exception as test_error:
+                    logger.warning(f"InfluxDB 连接测试失败，但这可能是正常的 (数据库可能尚未存在): {test_error}")
+                    # 对于 InfluxDB3，数据库会在首次写入时创建，所以连接测试失败是可以接受的
                 
                 self.enabled = True
                 # 初始化连接管理器
