@@ -28,8 +28,8 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
         json_schema_extra={  
             "name": "Batch Line Counter",  
             "version": "v1",  
-            "short_description": "多视角模式下计算检测对象通过线段的数量。",  
-            "long_description": "多视角版本的线段计数器，提供更好的性能表现。",  
+            "short_description": "Count objects passing through line segments in multi-view mode.",  
+            "long_description": "Multi-view version of line counter with better performance.",  
             "license": "Apache-2.0",  
             "block_type": "analytics",  
         }  
@@ -37,8 +37,8 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
     type: Literal["coral_core/batch_line_counter@v1"]  
       
     images: Selector(kind=[IMAGE_KIND]) = Field(  
-        title="图像",
-        description="待处理的图像批次",  
+        title="Images",
+        description="Batch of images to be processed",  
         examples=["$steps.preprocessing.images"],  
     )  
     detections: Selector(  
@@ -47,19 +47,19 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
             INSTANCE_SEGMENTATION_PREDICTION_KIND,  
         ]  
     ) = Field(  
-        title="检测结果",
-        description="用于统计线段穿越次数的检测结果批次。",  
+        title="Detection Results",
+        description="Batch of detection results for counting line crossings.",  
         examples=["$steps.object_detection_model.predictions"],  
     )  
     line_segments: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
-        title="线段",
-        description="线段批次，每个线段由两个点组成。",  
+        title="Line Segments",
+        description="Batch of line segments, each segment consists of two points.",  
         examples=["$inputs.line_zones"],  
     )  
     triggering_anchor: Union[str, Selector(kind=[STRING_KIND])] = Field(  
         default="CENTER",  
-        title="触发锚点",
-        description="检测对象必须穿越线段才能被计数的锚点位置。",  
+        title="Triggering Anchor",
+        description="Anchor position of detection objects that must cross the line to be counted.",  
         examples=["CENTER"],  
     )  
   
@@ -111,19 +111,19 @@ class BatchLineCounterBlockV1(WorkflowBlock):
         results = []  
           
         for image, detection, line_segment in zip(images, detections, line_segments):  
-            # 验证 tracker_id  
+            # Validate tracker_id  
             if detection.tracker_id is None:  
                 raise ValueError(  
                     f"tracker_id not initialized, {self.__class__.__name__} requires detections to be tracked"  
                 )  
               
-            # 验证 line_segment 格式  
+            # Validate line_segment format  
             if not isinstance(line_segment, list) or len(line_segment) != 2:  
                 raise ValueError(  
                     f"{self.__class__.__name__} requires line zone to be a list containing exactly 2 points"  
                 )  
               
-            # 获取或创建 LineZone  
+            # Get or create LineZone  
             metadata = image.video_metadata  
             zone_key = f"{metadata.video_identifier}_{hash(str(line_segment))}"  
               
@@ -136,12 +136,12 @@ class BatchLineCounterBlockV1(WorkflowBlock):
               
             line_zone = self._batch_of_line_zones[zone_key]  
               
-            # 触发检测  
+            # Trigger detection  
             mask_in, mask_out = line_zone.trigger(detections=detection)  
             detections_in = detection[mask_in]  
             detections_out = detection[mask_out]  
               
-            # 构建单个结果  
+            # Build single result  
             result = {  
                 "count_in": line_zone.in_count,  
                 "count_out": line_zone.out_count,  
