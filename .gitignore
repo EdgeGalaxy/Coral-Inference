@@ -163,3 +163,4 @@ cython_debug/
 inference_crt
 inference_profiling
 CLAUDE.md
+inference
