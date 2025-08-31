@@ -86,7 +86,7 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
   
     @classmethod  
     def get_parameters_accepting_batches(cls) -> List[str]:  
-        return ["images", "detections", "line_segments"]  
+        return ["images", "detections"]  
   
     @classmethod  
     def get_execution_engine_compatibility(cls) -> Optional[str]:  
@@ -105,12 +105,29 @@ class BatchLineCounterBlockV1(WorkflowBlock):
         self,  
         images: Batch[WorkflowImageData],  
         detections: Batch[sv.Detections],  
-        line_segments: Batch[List[Tuple[int, int]]],  
+        line_segments: Union[List[Tuple[int, int]], Batch[List[Tuple[int, int]]]],  
         triggering_anchor: str = "CENTER",  
     ) -> BlockResult:  
         results = []  
+        
+        # 检测输入类型，统一处理为批处理格式
+        if isinstance(line_segments, list) and len(line_segments) > 0:
+            # 检查是否为单个线段格式 [[x1,y1], [x2,y2]]
+            if (len(line_segments) == 2 and 
+                isinstance(line_segments[0], (list, tuple)) and 
+                len(line_segments[0]) == 2 and 
+                isinstance(line_segments[0][0], (int, float))):
+                # 单个线段，复制给所有图像
+                line_segments_batch = [line_segments] * len(images)
+            else:
+                # 已经是批处理格式
+                line_segments_batch = line_segments
+        else:
+            # 空或无效输入，使用默认线段
+            default_segment = [[0, 0], [100, 100]]
+            line_segments_batch = [default_segment] * len(images)
           
-        for image, detection, line_segment in zip(images, detections, line_segments):  
+        for image, detection, line_segment in zip(images, detections, line_segments_batch):  
             # 验证 tracker_id  
             if detection.tracker_id is None:  
                 raise ValueError(  
