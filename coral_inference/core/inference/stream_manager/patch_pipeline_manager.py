@@ -181,8 +181,8 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
         is_file_source = parsed_payload.processing_configuration.workflows_parameters.get("is_file_source")
         video_reference = parsed_payload.video_configuration.video_reference
-        source_buffer_filling_strategy = parsed_payload.video_configuration.source_buffer_filling_strategy if not is_file_source else BufferFillingStrategy.WAIT
-        source_buffer_consumption_strategy = parsed_payload.video_configuration.source_buffer_consumption_strategy if not is_file_source else BufferConsumptionStrategy.LAZY
+        source_buffer_filling_strategy = BufferFillingStrategy.ADAPTIVE_DROP_OLDEST if not is_file_source else BufferFillingStrategy.WAIT
+        source_buffer_consumption_strategy = BufferConsumptionStrategy.EAGER if not is_file_source else BufferConsumptionStrategy.LAZY
         pipeline_id = used_pipeline_id or self._pipeline_id
         
         # 创建基础的 InMemoryBufferSink
