@@ -78,12 +78,12 @@ class BatchLineCounterZoneVisualizationManifest(WorkflowBlockManifest):
         default=1.0,  
         examples=[1.0, "$inputs.text_scale"],  
     )  
-    count_ins: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
+    count_ins: Union[int, Selector(kind=[INTEGER_KIND])] = Field(  
         title="Count In",
         description="Batch of incoming count values from line counter.",  
         examples=["$steps.batch_line_counter.count_in"],  
     )  
-    count_outs: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
+    count_outs: Union[int, Selector(kind=[INTEGER_KIND])] = Field(  
         title="Count Out",
         description="Batch of outgoing count values from line counter.",  
         examples=["$steps.batch_line_counter.count_out"],  
@@ -97,7 +97,7 @@ class BatchLineCounterZoneVisualizationManifest(WorkflowBlockManifest):
   
     @classmethod  
     def get_parameters_accepting_batches(cls) -> List[str]:  
-        return ["images", "zones", "count_ins", "count_outs"]  
+        return ["images", "count_ins", "count_outs"]  
   
     @classmethod  
     def get_execution_engine_compatibility(cls) -> Optional[str]:  
@@ -130,17 +130,33 @@ class BatchLineCounterZoneVisualizationBlockV1(VisualizationBlock):
     def run(  
         self,  
         images: Batch[WorkflowImageData],  
-        zones: Batch[List[Tuple[int, int]]],  
+        zones: Union[List[Tuple[int, int]], Batch[List[Tuple[int, int]]]],  
         color: str,  
-        copy_image: bool,  
         thickness: int,  
         text_thickness: int,  
         text_scale: float,  
         count_ins: Batch[int],  
         count_outs: Batch[int],  
         opacity: float,  
+        copy_image: bool = True,  
     ) -> BlockResult:  
         results = []  
+
+        # 检测输入类型，统一处理为批处理格式
+        if isinstance(zones, list) and len(zones) > 0:
+            # 检查是否为单个线段格式 [[x1,y1], [x2,y2]]
+            if (len(zones) == 2 and 
+                isinstance(zones[0], (list, tuple)) and 
+                len(zones[0]) == 2 and 
+                isinstance(zones[0][0], (int, float))):
+                # 单个线段，复制给所有图像
+                line_segments_batch = [zones] * len(images)
+            else:
+                # 已经是批处理格式
+                line_segments_batch = zones
+        else:
+            # 不支持其他格式
+            raise ValueError("Unsupported input format.")
           
         for image, zone, count_in, count_out in zip(images, zones, count_ins, count_outs):  
             h, w, *_ = image.numpy_image.shape  

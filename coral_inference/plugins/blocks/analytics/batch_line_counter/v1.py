@@ -123,9 +123,8 @@ class BatchLineCounterBlockV1(WorkflowBlock):
                 # 已经是批处理格式
                 line_segments_batch = line_segments
         else:
-            # 空或无效输入，使用默认线段
-            default_segment = [[0, 0], [100, 100]]
-            line_segments_batch = [default_segment] * len(images)
+            # 不支持其他格式
+            raise ValueError("Unsupported input format.")
           
         for image, detection, line_segment in zip(images, detections, line_segments_batch):  
             # 验证 tracker_id  
