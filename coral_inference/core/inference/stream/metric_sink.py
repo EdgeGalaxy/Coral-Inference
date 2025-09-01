@@ -152,8 +152,10 @@ class MetricSink:
                     p = p.tag("source_id", str(source_id))
                 # fields
                 for k, v in fields.items():
-                    if isinstance(v, (int, float, bool)):
+                    if isinstance(v, (int, bool)):
                         p = p.field(k, v)
+                    elif isinstance(v, float):
+                        p = p.field(k, str(round(v, 2)))
                     elif v is None:
                         continue
                     else:
