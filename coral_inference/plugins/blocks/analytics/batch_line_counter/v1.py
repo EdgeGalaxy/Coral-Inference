@@ -51,7 +51,7 @@ class BatchLineCounterManifest(WorkflowBlockManifest):
         description="Batch of detection results for counting line crossings.",  
         examples=["$steps.object_detection_model.predictions"],  
     )  
-    line_segments: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
+    line_segments: Union[list, Selector(kind=[LIST_OF_VALUES_KIND])] = Field(  
         title="Line Segments",
         description="Batch of line segments, each segment consists of two points.",  
         examples=["$inputs.line_zones"],  

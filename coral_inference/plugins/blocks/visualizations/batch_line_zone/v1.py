@@ -49,7 +49,7 @@ class BatchLineCounterZoneVisualizationManifest(WorkflowBlockManifest):
         description="Batch of images to be visualized",  
         examples=["$steps.preprocessing.images"],  
     )  
-    zones: Selector(kind=[LIST_OF_VALUES_KIND]) = Field(  
+    zones: Union[list, Selector(kind=[LIST_OF_VALUES_KIND])] = Field(  
         title="Line Zones",
         description="Batch of line zones, each zone consists of two points.",  
         examples=["$inputs.line_zones"],  
