@@ -8,7 +8,7 @@ from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field, validator
 from loguru import logger
 
-from inference.core.interfaces.http.http_api import with_route_exceptions
+from inference.core.interfaces.http.http_api import with_route_exceptions_async
 
 from .monitor_optimized_influxdb import OptimizedPipelineMonitorWithInfluxDB
 from ..routing_utils import get_monitor
@@ -143,7 +143,7 @@ class InfluxDBStatusData(BaseModel):
     connected: bool = Field(..., description="是否连接")
     healthy: Optional[bool] = Field(None, description="是否健康")
     url: Optional[str] = Field(None, description="服务器地址")
-    bucket: Optional[str] = Field(None, description="数据库/桶名称")
+    database: Optional[str] = Field(None, description="数据库/桶名称")
     measurement: Optional[str] = Field(None, description="测量表名称")
     buffer_size: Optional[int] = Field(None, description="缓冲区大小", ge=0)
     last_flush_time: Optional[float] = Field(None, description="最后刷新时间戳", ge=0)
@@ -180,7 +180,7 @@ def register_monitor_routes(app: FastAPI) -> None:
         summary="获取Pipeline指标数据",
         description="获取指定时间范围内的Pipeline指标数据，用于图表展示",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_pipeline_metrics(
         pipeline_id: str,
         start_time: Optional[float] = Query(None, description="开始时间戳（秒）"),
@@ -277,7 +277,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def flush_monitor_cache(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor)
     ) -> OperationResponse:
@@ -309,7 +309,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_monitor_status(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor)
     ) -> MonitorStatusResponse:
@@ -350,7 +350,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_disk_usage(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor)
     ) -> DiskUsageResponse:
@@ -389,7 +389,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def trigger_cleanup(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor)
     ) -> OperationResponse:
@@ -412,7 +412,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_pipeline_metrics_summary(
         pipeline_id: str,
         start_time: Optional[float] = Query(None, description="开始时间戳（秒）"),
@@ -495,7 +495,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             500: {"model": ErrorResponse, "description": "服务器内部错误"}
         }
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_influxdb_status(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor)
     ) -> InfluxDBStatusResponse:
@@ -521,7 +521,7 @@ def register_monitor_routes(app: FastAPI) -> None:
                 connected=monitor.influxdb_collector.enabled,
                 healthy=is_healthy,
                 url=monitor.influxdb_collector.influxdb_url,
-                bucket=monitor.influxdb_collector.influxdb_bucket,
+                database=monitor.influxdb_collector.influxdb_database,
                 measurement=monitor.influxdb_collector.measurement,
                 buffer_size=len(monitor.influxdb_collector.metrics_buffer),
                 last_flush_time=monitor.influxdb_collector.last_flush_time

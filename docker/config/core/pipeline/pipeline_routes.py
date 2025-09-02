@@ -1,15 +1,16 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from fastapi import FastAPI, Query, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 
-from inference.core.interfaces.http.http_api import with_route_exceptions
+from inference.core.interfaces.http.http_api import with_route_exceptions, with_route_exceptions_async
 from inference.core.interfaces.stream_manager.api.entities import (
     InitializeWebRTCPipelineResponse,
     CommandResponse,
     ConsumePipelineResponse,
     InferencePipelineStatusResponse,
+    ListPipelinesResponse
 )
 from inference.core.interfaces.stream_manager.api.stream_manager_client import (
     StreamManagerClient,
@@ -32,19 +33,19 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] List active InferencePipelines",
         description="[EXPERIMENTAL] Listing all active InferencePipelines processing videos",
     )
-    @with_route_exceptions
-    async def list_pipelines() -> JSONResponse:
+    @with_route_exceptions_async
+    async def list_pipelines_view() -> Dict[str, Any]:
         resp = await stream_manager_client.list_pipelines()
         content = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
         content["fixed_pipelines"] = pipeline_cache.list()
-        return JSONResponse(content=content)
+        return content
 
     @app.post(
         "/inference_pipelines/initialise",
         summary="[EXPERIMENTAL] Starts new InferencePipeline",
         description="[EXPERIMENTAL] Starts new InferencePipeline",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def initialise(request: Request) -> CommandResponse:
         req_dict: Dict[str, any] = await request.json()
 
@@ -71,7 +72,6 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         auto_restart = workflows_parameters.get("auto_restart", not is_file_source)
 
         patched_request = InitialisePipelinePayload(**req_dict)
-        print(f'patch_requests: {patched_request}')
         resp = await stream_manager_client.initialise_pipeline(
             initialisation_request=patched_request
         )
@@ -103,7 +103,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] Get status of InferencePipeline",
         description="[EXPERIMENTAL] Get status of InferencePipeline",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def get_status(pipeline_id: str) -> InferencePipelineStatusResponse:
         real_id = _map_pipeline_id(pipeline_id)
         return await stream_manager_client.get_status(pipeline_id=real_id)
@@ -113,7 +113,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] Pauses the InferencePipeline",
         description="[EXPERIMENTAL] Pauses the InferencePipeline",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def pause(pipeline_id: str) -> CommandResponse:
         real_id = _map_pipeline_id(pipeline_id)
         return await stream_manager_client.pause_pipeline(pipeline_id=real_id)
@@ -123,7 +123,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] Resumes the InferencePipeline",
         description="[EXPERIMENTAL] Resumes the InferencePipeline",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def resume(pipeline_id: str) -> CommandResponse:
         real_id = _map_pipeline_id(pipeline_id)
         return await stream_manager_client.resume_pipeline(pipeline_id=real_id)
@@ -133,7 +133,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] Terminates the InferencePipeline",
         description="[EXPERIMENTAL] Terminates the InferencePipeline",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def terminate(pipeline_id: str) -> CommandResponse:
         real_id = _map_pipeline_id(pipeline_id)
         resp = await stream_manager_client.terminate_pipeline(pipeline_id=real_id)
@@ -149,7 +149,7 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         summary="[EXPERIMENTAL] Consumes InferencePipeline result",
         description="[EXPERIMENTAL] Consumes InferencePipeline result",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def consume(
         pipeline_id: str, request: Optional[ConsumeResultsPayload] = None
     ) -> ConsumePipelineResponse:

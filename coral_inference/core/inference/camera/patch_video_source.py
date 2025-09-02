@@ -9,7 +9,7 @@ from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
 
 
 def _consumes_camera_on_rknn(video: Union[str, int]) -> bool:
-    if CURRENT_INFERENCE_PLATFORM.lower() != "rknn":
+    if CURRENT_INFERENCE_PLATFORM and CURRENT_INFERENCE_PLATFORM.lower() != "rknn":
         return False
     if isinstance(video, int):
         return True

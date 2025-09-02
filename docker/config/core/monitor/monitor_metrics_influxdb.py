@@ -396,14 +396,14 @@ class InfluxDBMetricsCollector:
     ) -> List[Point]:
         """创建 InfluxDB Point 对象"""
         points = []
-        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        dt = datetime.fromtimestamp(timestamp)
         
         # 创建 pipeline 级别的指标点
         pipeline_point = Point(self.measurement)
         pipeline_point = pipeline_point.tag("pipeline_id", pipeline_id)
         pipeline_point = pipeline_point.tag("pipeline_name", pipeline_name)
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
-        pipeline_point = pipeline_point.field("throughput", str(round(float(inference_throughput), 2)))
+        pipeline_point = pipeline_point.field("throughput", int(inference_throughput))
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
         pipeline_point = pipeline_point.time(dt)
         points.append(pipeline_point)
@@ -438,19 +438,19 @@ class InfluxDBMetricsCollector:
             if latency_data:
                 # 延迟指标
                 if "latency_mean" in latency_data:
-                    point = point.field("latency_mean", str(round(float(latency_data["latency_mean"]), 2)))
+                    point = point.field("latency_mean", int(latency_data["latency_mean"]))
                 if "latency_p50" in latency_data:
-                    point = point.field("latency_p50", str(round(float(latency_data["latency_p50"]), 2)))
+                    point = point.field("latency_p50", int(latency_data["latency_p50"]))
                 if "latency_p90" in latency_data:
-                    point = point.field("latency_p90", str(round(float(latency_data["latency_p90"]), 2)))
+                    point = point.field("latency_p90", int(latency_data["latency_p90"]))
                 if "latency_p99" in latency_data:
-                    point = point.field("latency_p99", str(round(float(latency_data["latency_p99"]), 2)))
+                    point = point.field("latency_p99", int(latency_data["latency_p99"]))
                     
                 # 帧处理指标
                 if "frames_processed" in latency_data:
                     point = point.field("frames_processed", int(latency_data["frames_processed"]))
                 if "fps" in latency_data:
-                    point = point.field("fps", str(round(float(latency_data["fps"]), 2)))
+                    point = point.field("fps", int(latency_data["fps"]))
                 if "dropped_frames" in latency_data:
                     point = point.field("dropped_frames", int(latency_data["dropped_frames"]))
                 if "queue_size" in latency_data:
@@ -584,7 +584,7 @@ class InfluxDBMetricsCollector:
                                         if value.endswith('i'):
                                             point_dict["fields"][key] = int(value[:-1])
                                         elif '.' in value:
-                                            point_dict["fields"][key] = str(round(float(value), 2))
+                                            point_dict["fields"][key] = int(value)
                                         else:
                                             point_dict["fields"][key] = value.strip('"')
                                     except ValueError:
@@ -659,7 +659,7 @@ class InfluxDBMetricsCollector:
                     # 恢复 fields
                     for field_key, field_value in item.get("fields", {}).items():
                         if isinstance(field_value, float):
-                            field_value = round(field_value, 2)
+                            field_value = int(field_value)
                         point = point.field(field_key, field_value)
                         
                     # 恢复时间戳

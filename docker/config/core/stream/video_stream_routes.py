@@ -11,7 +11,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from inference.core.interfaces.http.http_api import with_route_exceptions
+from inference.core.interfaces.http.http_api import with_route_exceptions_async
 from inference.core.interfaces.stream_manager.api.entities import (
     CommandResponse,
     InitializeWebRTCPipelineResponse,
@@ -96,7 +96,7 @@ def register_video_stream_routes(
         summary="[EXPERIMENTAL] Offer Pipeline Stream",
         description="[EXPERIMENTAL] Offer Pipeline Stream",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def initialize_offer(
         pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload
     ) -> CommandResponse:
@@ -112,7 +112,7 @@ def register_video_stream_routes(
         summary="获取视频帧并返回base64图片",
         description="从指定的视频源读取一帧并返回base64编码的图片",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def capture_video_frame(request: VideoCaptureRequest) -> VideoCaptureResponse:
         video_producer = None
         try:
@@ -147,7 +147,7 @@ def register_video_stream_routes(
         summary="列出录像文件",
         description="列出指定 pipeline 的录像文件列表",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def list_pipeline_videos(
         pipeline_id: str,
         output_directory: str = "records",
@@ -221,7 +221,7 @@ def register_video_stream_routes(
         summary="创建视频流WebRTC连接",
         description="持续获取视频帧并通过WebRTC协议返回",
     )
-    @with_route_exceptions
+    @with_route_exceptions_async
     async def create_webrtc_video_stream(
         request: WebRTCStreamRequest,
     ) -> WebRTCStreamResponse:
