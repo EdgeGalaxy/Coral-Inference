@@ -211,6 +211,7 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
                 max_disk_usage=video_record_sink_configuration.max_disk_usage,
                 max_total_size=video_record_sink_configuration.max_total_size,
                 video_field_name=video_record_sink_configuration.image_input_name,
+                queue_size=video_record_sink_configuration.queue_size,
             )
             sinks.append(video_sink.on_prediction)
         
@@ -219,10 +220,15 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         try:
             is_open = bool(metrics_cfg.get("is_open", True))
             selected_fields = metrics_cfg.get("selected_fields") or []
+            queue_size = metrics_cfg.get("queue_size", 1000)  # 默认1000
             if is_open:
-                metric_sink = MetricSink.init(pipeline_id=pipeline_id, selected_fields=selected_fields)
+                metric_sink = MetricSink.init(
+                    pipeline_id=pipeline_id, 
+                    selected_fields=selected_fields,
+                    queue_size=queue_size
+                )
                 sinks.append(metric_sink.on_prediction)
-                logger.info(f"MetricSink attached. fields={selected_fields}")
+                logger.info(f"MetricSink attached. fields={selected_fields}, queue_size={queue_size}")
             else:
                 logger.info("MetricSink disabled by config.")
         except Exception as metric_error:
