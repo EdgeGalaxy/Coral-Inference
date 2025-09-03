@@ -13,7 +13,6 @@ from influxdb_client_3 import InfluxDBClient3, Point
 from inference.core.interfaces.camera.entities import VideoFrame
 from inference.core.interfaces.stream.utils import wrap_in_list
 
-
 from coral_inference.core.env import (
     INFLUXDB_METRICS_URL,
     INFLUXDB_METRICS_TOKEN,
@@ -24,13 +23,11 @@ from coral_inference.core.env import (
 def _ns_between(now: datetime, then: Optional[datetime]) -> int:
     if then is None:
         return 0
-    # 确保时区一致，统一使用 UTC
     if then.tzinfo is None:
         then = then.replace(tzinfo=timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     delta = now - then
-    # 以纳秒返回
     return int(delta.total_seconds() * 1_000_000_000)
 
 
@@ -39,7 +36,6 @@ def _extract_fields_from_prediction(pred: Optional[dict], selected_fields: List[
         return {}
     result: Dict[str, Any] = {}
     for field in selected_fields:
-        # 支持点号路径 e.g. "metrics.count"
         try:
             value: Any = pred
             for part in field.split("."):
@@ -51,7 +47,6 @@ def _extract_fields_from_prediction(pred: Optional[dict], selected_fields: List[
             if value is not None:
                 result[field] = value
         except Exception:
-            # 忽略单字段解析错误
             continue
     return result
 
@@ -82,6 +77,7 @@ class MetricSink:
         self._pipeline_id = pipeline_id
         self._selected_fields = selected_fields
         self._measurement = measurement
+
         self._enabled = False
         self._client: Optional[InfluxDBClient3] = None  # type: ignore
         
@@ -104,17 +100,21 @@ class MetricSink:
                 token=INFLUXDB_METRICS_TOKEN,
                 database=INFLUXDB_METRICS_DATABASE,
             )
-            
-            # 测试连接
             try:
                 # 尝试一个简单的查询来验证连接
                 test_result = self._client.query("SELECT 1 as connection_test")
                 logger.info("MetricSink InfluxDB 连接验证成功")
-            except Exception as test_error:
-                logger.warning(f"MetricSink InfluxDB 连接测试失败: {test_error}")
-                # 对于新数据库，这可能是正常的
-            
+            except Exception as test_err:
+                logger.warning(f"MetricSink InfluxDB 连接测试失败: {test_err}")
             self._enabled = True
+
+            # 启动后台线程
+            self._worker = threading.Thread(
+                target=self._worker_loop,
+                name=f"MetricSinkWorker-{pipeline_id}",
+                daemon=True,
+            )
+            self._worker.start()
             logger.info(
                 f"MetricSink (v3) enabled for pipeline_id={pipeline_id}, database={INFLUXDB_METRICS_DATABASE}, queue_size={queue_size}"
             )
