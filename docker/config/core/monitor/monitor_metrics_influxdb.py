@@ -135,7 +135,7 @@ InfluxDB 连接管理器，处理连接重试和健康检查
             await asyncio.get_event_loop().run_in_executor(
                 None, 
                 self.client.query, 
-                "SELECT 1 as health_check LIMIT 1"
+                "SELECT 1 as health_check"
             )
             self.is_healthy = True
             logger.debug("InfluxDB 健康检查通过")
@@ -262,7 +262,7 @@ class InfluxDBMetricsCollector:
                 try:
                     # InfluxDB3 中数据库在首次写入时自动创建
                     # 这里通过一个简单的查询来验证连接和数据库访问权限
-                    test_result = self.client.query("SELECT 1 as connection_test LIMIT 1")
+                    test_result = self.client.query("SELECT 1 as connection_test")
                     logger.info("InfluxDB 连接测试成功")
                 except Exception as test_error:
                     logger.warning(f"InfluxDB 连接测试失败，但这可能是正常的 (数据库可能尚未存在): {test_error}")
@@ -436,15 +436,15 @@ class InfluxDBMetricsCollector:
                     
             # 设置 Fields
             if latency_data:
-                # 延迟指标
+                # 延迟指标 - 存储为数值类型以支持聚合查询
                 if "latency_mean" in latency_data:
-                    point = point.field("latency_mean", int(latency_data["latency_mean"]))
+                    point = point.field("latency_mean", round(float(latency_data["latency_mean"]), 2))
                 if "latency_p50" in latency_data:
-                    point = point.field("latency_p50", int(latency_data["latency_p50"]))
+                    point = point.field("latency_p50", round(float(latency_data["latency_p50"]), 2))
                 if "latency_p90" in latency_data:
-                    point = point.field("latency_p90", int(latency_data["latency_p90"]))
+                    point = point.field("latency_p90", round(float(latency_data["latency_p90"]), 2))
                 if "latency_p99" in latency_data:
-                    point = point.field("latency_p99", int(latency_data["latency_p99"]))
+                    point = point.field("latency_p99", round(float(latency_data["latency_p99"]), 2))
                     
                 # 帧处理指标
                 if "frames_processed" in latency_data:
@@ -717,22 +717,22 @@ class InfluxDBMetricsCollector:
             
         try:
             # 构建 SQL 查询 (InfluxDB3 使用 SQL 而不是 InfluxQL)
+            # 只使用实际存在的字段：buffer_size, level, pipeline_id, pipeline_name, source_count, source_id, state, throughput, time
             query = f"""
                 SELECT 
-                    time_bucket('{aggregation_window}', time) as bucket,
+                    date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
                     source_id,
-                    AVG(latency_mean) as avg_latency,
-                    MAX(latency_p99) as max_p99_latency,
-                    AVG(fps) as avg_fps,
-                    SUM(frames_processed) as total_frames,
-                    SUM(dropped_frames) as total_dropped
+                    state,
+                    AVG(CAST(throughput AS DOUBLE)) as avg_throughput,
+                    AVG(CAST(buffer_size AS DOUBLE)) as avg_buffer_size,
+                    COUNT(*) as data_points
                 FROM {self.measurement}
                 WHERE 
                     pipeline_id = '{pipeline_id}'
-                    AND time >= '{start_time.isoformat()}'
-                    AND time <= '{end_time.isoformat()}'
+                    AND time >= TIMESTAMP '{start_time.isoformat()}'
+                    AND time <= TIMESTAMP '{end_time.isoformat()}'
                     AND level = 'source'
-                GROUP BY bucket, source_id
+                GROUP BY bucket, source_id, state
                 ORDER BY bucket
             """
             
@@ -753,16 +753,45 @@ class InfluxDBMetricsCollector:
             }
             
             if result:
-                for record in result:
-                    summary["data"].append({
-                        "time": record.get("bucket"),
-                        "source_id": record.get("source_id"),
-                        "avg_latency": record.get("avg_latency"),
-                        "max_p99_latency": record.get("max_p99_latency"),
-                        "avg_fps": record.get("avg_fps"),
-                        "total_frames": record.get("total_frames"),
-                        "total_dropped": record.get("total_dropped")
-                    })
+                # InfluxDB3 返回 pyarrow 格式的数据
+                try:
+                    # 转换为 pandas DataFrame 或直接处理 pyarrow 数据
+                    import pandas as pd
+                    df = result.to_pandas() if hasattr(result, 'to_pandas') else pd.DataFrame(result)
+                    
+                    for _, row in df.iterrows():
+                        summary["data"].append({
+                            "time": str(row.get("bucket")) if row.get("bucket") is not None else None,
+                            "source_id": str(row.get("source_id")) if row.get("source_id") is not None else None,
+                            "state": str(row.get("state")) if row.get("state") is not None else None,
+                            "avg_throughput": float(row.get("avg_throughput")) if row.get("avg_throughput") is not None else None,
+                            "avg_buffer_size": float(row.get("avg_buffer_size")) if row.get("avg_buffer_size") is not None else None,
+                            "data_points": int(row.get("data_points")) if row.get("data_points") is not None else None
+                        })
+                except Exception as parse_error:
+                    logger.warning(f"解析查询结果失败: {parse_error}")
+                    # 尝试直接遍历结果
+                    try:
+                        for record in result:
+                            if hasattr(record, 'to_dict'):
+                                record_dict = record.to_dict()
+                            else:
+                                record_dict = dict(record) if hasattr(record, '__iter__') else {}
+                            
+                            summary["data"].append({
+                                "time": str(record_dict.get("bucket")) if record_dict.get("bucket") is not None else None,
+                                "source_id": str(record_dict.get("source_id")) if record_dict.get("source_id") is not None else None,
+                                "state": str(record_dict.get("state")) if record_dict.get("state") is not None else None,
+                                "avg_throughput": float(record_dict.get("avg_throughput")) if record_dict.get("avg_throughput") is not None else None,
+                                "avg_buffer_size": float(record_dict.get("avg_buffer_size")) if record_dict.get("avg_buffer_size") is not None else None,
+                                "data_points": int(record_dict.get("data_points")) if record_dict.get("data_points") is not None else None
+                            })
+                    except Exception as fallback_error:
+                        logger.error(f"结果处理失败: {fallback_error}")
+                        logger.debug(f"结果类型: {type(result)}")
+                        if hasattr(result, '__dict__'):
+                            logger.debug(f"结果属性: {result.__dict__}")
+                    
                     
             return summary
             
