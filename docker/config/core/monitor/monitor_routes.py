@@ -186,6 +186,7 @@ def register_monitor_routes(app: FastAPI) -> None:
         start_time: Optional[float] = Query(None, description="开始时间戳（秒）"),
         end_time: Optional[float] = Query(None, description="结束时间戳（秒）"),
         minutes: Optional[int] = Query(5, description="最近几分钟的数据，当start_time和end_time为空时使用"),
+        level: Optional[str] = Query("source", description="指标级别：source 或 pipeline"),
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
     ) -> MetricsResponse:
         try:
@@ -202,51 +203,67 @@ def register_monitor_routes(app: FastAPI) -> None:
                     pipeline_id=pipeline_id,
                     start_time=start_dt,
                     end_time=end_dt,
-                    aggregation_window="1m"  # 可以根据时间范围动态调整
+                    aggregation_window="1m",  # 可以根据时间范围动态调整
+                    level=level or "source",
                 )
                 
                 # 转换 InfluxDB 数据为前端需要的格式
                 if summary and summary.get('data'):
-                    dates = []
-                    throughput_data = []
-                    source_states = {}
-                    
-                    for record in summary['data']:
-                        date_str = record.get('time', '')
-                        if date_str:
-                            dates.append(date_str)
-                            
-                        # 吞吐量数据
-                        throughput_data.append(record.get('avg_fps', 0))
-                        
-                        # 处理源数据
-                        source_id = record.get('source_id', 'unknown')
-                        if source_id not in source_states:
-                            source_states[source_id] = {
-                                "latency_mean": [],
-                                "latency_p50": [],
-                                "latency_p90": [],
-                                "latency_p99": [],
-                                "fps": [],
-                                "frames_processed": [],
-                                "dropped_frames": [],
-                            }
-                        
-                        source_states[source_id]["latency_mean"].append(record.get('avg_latency', 0))
-                        source_states[source_id]["latency_p99"].append(record.get('max_p99_latency', 0))
-                        source_states[source_id]["fps"].append(record.get('avg_fps', 0))
-                        source_states[source_id]["frames_processed"].append(record.get('total_frames', 0))
-                        source_states[source_id]["dropped_frames"].append(record.get('total_dropped', 0))
-                    
-                    # 构建响应数据
-                    datasets = [{"name": "Throughput", "data": throughput_data}]
-                    for source_id, data in source_states.items():
-                        datasets.append({"name": f"Latency Mean ({source_id})", "data": data["latency_mean"]})
-                        datasets.append({"name": f"Latency P99 ({source_id})", "data": data["latency_p99"]})
-                        datasets.append({"name": f"FPS ({source_id})", "data": data["fps"]})
-                        datasets.append({"name": f"Frames Processed ({source_id})", "data": data["frames_processed"]})
-                        datasets.append({"name": f"Dropped Frames ({source_id})", "data": data["dropped_frames"]})
-                        
+                    rows = summary['data']
+                    # 按时间桶聚合
+                    buckets = sorted({r.get('time') for r in rows if r.get('time')})
+                    dates = buckets[:]
+                    datasets = []
+
+                    if (level or "source") == "pipeline":
+                        # 期望每个 bucket 有一条记录
+                        bucket_map = {r.get('time'): r for r in rows if r.get('time')}
+                        throughput_data = [float(bucket_map.get(ts, {}).get('avg_throughput', 0) or 0) for ts in dates]
+                        source_count_data = [float(bucket_map.get(ts, {}).get('avg_source_count', 0) or 0) for ts in dates]
+                        datasets.append({"name": "Throughput", "data": throughput_data})
+                        datasets.append({"name": "Source Count", "data": source_count_data})
+                    else:
+                        # source 级别：每个 bucket 可能存在多个 source 条目
+                        # 1) 汇总吞吐量为 sum(avg_fps)
+                        rows_by_bucket = {}
+                        for r in rows:
+                            ts = r.get('time')
+                            if not ts:
+                                continue
+                            rows_by_bucket.setdefault(ts, []).append(r)
+
+                        throughput_data = []
+                        for ts in dates:
+                            per_bucket = rows_by_bucket.get(ts, [])
+                            s = sum(float(x.get('avg_fps') or 0) for x in per_bucket)
+                            throughput_data.append(s)
+                        datasets.append({"name": "Throughput", "data": throughput_data})
+
+                        # 2) 按 source_id 构建多组数据
+                        sources = sorted({str(r.get('source_id')) for r in rows if r.get('source_id') is not None})
+                        # 索引 (bucket, source) -> row
+                        idx = {(r.get('time'), str(r.get('source_id'))): r for r in rows if r.get('time') and r.get('source_id') is not None}
+
+                        for sid in sources:
+                            latency_mean = []
+                            latency_p99 = []
+                            fps = []
+                            frames = []
+                            dropped = []
+                            for ts in dates:
+                                rec = idx.get((ts, sid)) or {}
+                                latency_mean.append(float(rec.get('avg_latency', 0) or 0))
+                                latency_p99.append(float(rec.get('max_p99_latency', 0) or 0))
+                                fps.append(float(rec.get('avg_fps', 0) or 0))
+                                frames.append(float(rec.get('total_frames', 0) or 0))
+                                dropped.append(float(rec.get('total_dropped', 0) or 0))
+
+                            datasets.append({"name": f"Inference Latency ({sid})", "data": latency_mean})
+                            datasets.append({"name": f"Inference Latency P99 ({sid})", "data": latency_p99})
+                            datasets.append({"name": f"FPS ({sid})", "data": fps})
+                            datasets.append({"name": f"Frames Processed ({sid})", "data": frames})
+                            datasets.append({"name": f"Dropped Frames ({sid})", "data": dropped})
+
                     metrics = {"dates": dates, "datasets": datasets}
                 else:
                     # 没有数据
@@ -534,5 +551,4 @@ def register_monitor_routes(app: FastAPI) -> None:
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"获取InfluxDB状态失败: {str(e)}")
-
 

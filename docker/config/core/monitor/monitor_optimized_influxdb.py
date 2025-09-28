@@ -741,7 +741,8 @@ class OptimizedPipelineMonitorWithInfluxDB:
         pipeline_id: str,
         start_time: datetime,
         end_time: datetime,
-        aggregation_window: str = "1m"
+        aggregation_window: str = "1m",
+        level: str = "source"
     ) -> Dict[str, Any]:
         """
         获取指定时间范围的指标摘要
@@ -749,7 +750,7 @@ class OptimizedPipelineMonitorWithInfluxDB:
         """
         if self.influxdb_collector and self.influxdb_collector.enabled:
             return await self.influxdb_collector.get_metrics_summary(
-                pipeline_id, start_time, end_time, aggregation_window
+                pipeline_id, start_time, end_time, aggregation_window, level
             )
         else:
             logger.warning("InfluxDB 未启用，无法查询指标摘要")

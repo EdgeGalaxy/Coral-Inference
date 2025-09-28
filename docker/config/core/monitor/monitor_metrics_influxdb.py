@@ -396,14 +396,14 @@ class InfluxDBMetricsCollector:
     ) -> List[Point]:
         """创建 InfluxDB Point 对象"""
         points = []
-        dt = datetime.fromtimestamp(timestamp)
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         
         # 创建 pipeline 级别的指标点
         pipeline_point = Point(self.measurement)
         pipeline_point = pipeline_point.tag("pipeline_id", pipeline_id)
         pipeline_point = pipeline_point.tag("pipeline_name", pipeline_name)
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
-        pipeline_point = pipeline_point.field("throughput", int(inference_throughput))
+        pipeline_point = pipeline_point.field("throughput", round(float(inference_throughput), 2))
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
         pipeline_point = pipeline_point.time(dt)
         points.append(pipeline_point)
@@ -697,7 +697,8 @@ class InfluxDBMetricsCollector:
         pipeline_id: str,
         start_time: datetime,
         end_time: datetime,
-        aggregation_window: str = "1m"
+        aggregation_window: str = "1m",
+        level: str = "source"
     ) -> Dict[str, Any]:
         """
         从 InfluxDB 查询指标摘要
@@ -716,25 +717,43 @@ class InfluxDBMetricsCollector:
             return {}
             
         try:
-            # 构建 SQL 查询 (InfluxDB3 使用 SQL 而不是 InfluxQL)
-            # 只使用实际存在的字段：buffer_size, level, pipeline_id, pipeline_name, source_count, source_id, state, throughput, time
-            query = f"""
-                SELECT 
-                    date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
-                    source_id,
-                    state,
-                    AVG(CAST(throughput AS DOUBLE)) as avg_throughput,
-                    AVG(CAST(buffer_size AS DOUBLE)) as avg_buffer_size,
-                    COUNT(*) as data_points
-                FROM {self.measurement}
-                WHERE 
-                    pipeline_id = '{pipeline_id}'
-                    AND time >= TIMESTAMP '{start_time.isoformat()}'
-                    AND time <= TIMESTAMP '{end_time.isoformat()}'
-                    AND level = 'source'
-                GROUP BY bucket, source_id, state
-                ORDER BY bucket
-            """
+            # 构建 SQL 查询 (InfluxDB3 使用 SQL)
+            if level == "pipeline":
+                query = f"""
+                    SELECT 
+                        date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
+                        AVG(CAST(throughput AS DOUBLE)) as avg_throughput,
+                        AVG(CAST(source_count AS DOUBLE)) as avg_source_count,
+                        COUNT(*) as data_points
+                    FROM {self.measurement}
+                    WHERE 
+                        pipeline_id = '{pipeline_id}'
+                        AND time >= TIMESTAMP '{start_time.isoformat()}'
+                        AND time <= TIMESTAMP '{end_time.isoformat()}'
+                        AND level = 'pipeline'
+                    GROUP BY bucket
+                    ORDER BY bucket
+                """
+            else:
+                query = f"""
+                    SELECT 
+                        date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
+                        source_id,
+                        AVG(CAST(latency_mean AS DOUBLE)) as avg_latency,
+                        MAX(CAST(latency_p99 AS DOUBLE)) as max_p99_latency,
+                        AVG(CAST(fps AS DOUBLE)) as avg_fps,
+                        SUM(CAST(frames_processed AS DOUBLE)) as total_frames,
+                        SUM(CAST(dropped_frames AS DOUBLE)) as total_dropped,
+                        COUNT(*) as data_points
+                    FROM {self.measurement}
+                    WHERE 
+                        pipeline_id = '{pipeline_id}'
+                        AND time >= TIMESTAMP '{start_time.isoformat()}'
+                        AND time <= TIMESTAMP '{end_time.isoformat()}'
+                        AND level = 'source'
+                    GROUP BY bucket, source_id
+                    ORDER BY bucket
+                """
             
             # 执行查询
             result = await asyncio.get_event_loop().run_in_executor(
@@ -755,37 +774,53 @@ class InfluxDBMetricsCollector:
             if result:
                 # InfluxDB3 返回 pyarrow 格式的数据
                 try:
-                    # 转换为 pandas DataFrame 或直接处理 pyarrow 数据
                     import pandas as pd
                     df = result.to_pandas() if hasattr(result, 'to_pandas') else pd.DataFrame(result)
-                    
                     for _, row in df.iterrows():
-                        summary["data"].append({
+                        item = {
                             "time": str(row.get("bucket")) if row.get("bucket") is not None else None,
-                            "source_id": str(row.get("source_id")) if row.get("source_id") is not None else None,
-                            "state": str(row.get("state")) if row.get("state") is not None else None,
-                            "avg_throughput": float(row.get("avg_throughput")) if row.get("avg_throughput") is not None else None,
-                            "avg_buffer_size": float(row.get("avg_buffer_size")) if row.get("avg_buffer_size") is not None else None,
-                            "data_points": int(row.get("data_points")) if row.get("data_points") is not None else None
-                        })
+                            "data_points": int(row.get("data_points")) if row.get("data_points") is not None else None,
+                        }
+                        if level == "pipeline":
+                            item.update({
+                                "avg_throughput": float(row.get("avg_throughput")) if row.get("avg_throughput") is not None else None,
+                                "avg_source_count": float(row.get("avg_source_count")) if row.get("avg_source_count") is not None else None,
+                            })
+                        else:
+                            item.update({
+                                "source_id": str(row.get("source_id")) if row.get("source_id") is not None else None,
+                                "avg_latency": float(row.get("avg_latency")) if row.get("avg_latency") is not None else None,
+                                "max_p99_latency": float(row.get("max_p99_latency")) if row.get("max_p99_latency") is not None else None,
+                                "avg_fps": float(row.get("avg_fps")) if row.get("avg_fps") is not None else None,
+                                "total_frames": float(row.get("total_frames")) if row.get("total_frames") is not None else None,
+                                "total_dropped": float(row.get("total_dropped")) if row.get("total_dropped") is not None else None,
+                            })
+                        summary["data"].append(item)
                 except Exception as parse_error:
                     logger.warning(f"解析查询结果失败: {parse_error}")
                     # 尝试直接遍历结果
                     try:
                         for record in result:
-                            if hasattr(record, 'to_dict'):
-                                record_dict = record.to_dict()
-                            else:
-                                record_dict = dict(record) if hasattr(record, '__iter__') else {}
-                            
-                            summary["data"].append({
+                            record_dict = record.to_dict() if hasattr(record, 'to_dict') else (dict(record) if hasattr(record, '__iter__') else {})
+                            item = {
                                 "time": str(record_dict.get("bucket")) if record_dict.get("bucket") is not None else None,
-                                "source_id": str(record_dict.get("source_id")) if record_dict.get("source_id") is not None else None,
-                                "state": str(record_dict.get("state")) if record_dict.get("state") is not None else None,
-                                "avg_throughput": float(record_dict.get("avg_throughput")) if record_dict.get("avg_throughput") is not None else None,
-                                "avg_buffer_size": float(record_dict.get("avg_buffer_size")) if record_dict.get("avg_buffer_size") is not None else None,
-                                "data_points": int(record_dict.get("data_points")) if record_dict.get("data_points") is not None else None
-                            })
+                                "data_points": int(record_dict.get("data_points")) if record_dict.get("data_points") is not None else None,
+                            }
+                            if level == "pipeline":
+                                item.update({
+                                    "avg_throughput": float(record_dict.get("avg_throughput")) if record_dict.get("avg_throughput") is not None else None,
+                                    "avg_source_count": float(record_dict.get("avg_source_count")) if record_dict.get("avg_source_count") is not None else None,
+                                })
+                            else:
+                                item.update({
+                                    "source_id": str(record_dict.get("source_id")) if record_dict.get("source_id") is not None else None,
+                                    "avg_latency": float(record_dict.get("avg_latency")) if record_dict.get("avg_latency") is not None else None,
+                                    "max_p99_latency": float(record_dict.get("max_p99_latency")) if record_dict.get("max_p99_latency") is not None else None,
+                                    "avg_fps": float(record_dict.get("avg_fps")) if record_dict.get("avg_fps") is not None else None,
+                                    "total_frames": float(record_dict.get("total_frames")) if record_dict.get("total_frames") is not None else None,
+                                    "total_dropped": float(record_dict.get("total_dropped")) if record_dict.get("total_dropped") is not None else None,
+                                })
+                            summary["data"].append(item)
                     except Exception as fallback_error:
                         logger.error(f"结果处理失败: {fallback_error}")
                         logger.debug(f"结果类型: {type(result)}")
