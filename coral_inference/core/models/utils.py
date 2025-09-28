@@ -1,9 +1,15 @@
 import os
 import subprocess
-from typing import Any
+from typing import Any, Union
 
 import numpy as np
+from requests import Response
 from inference.core.exceptions import ModelArtefactError
+from inference.core.roboflow_api import (
+    get_from_url,
+    wrap_roboflow_api_errors,
+    _get_from_url
+)
 from coral_inference.core.log import logger
 
 from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
@@ -57,3 +63,16 @@ def get_runtime_platform():
     except:
         logger.info("rknn-server is not installed, using onnx runtime")
         return "onnx"
+
+
+@wrap_roboflow_api_errors()
+def get_from_url(
+    url: str,
+    json_response: bool = True,
+    verify_content_length: bool = False,
+) -> Union[Response, dict]:
+    return _get_from_url(
+        url=url,
+        json_response=json_response,
+        # verify_content_length=verify_content_length,
+    )

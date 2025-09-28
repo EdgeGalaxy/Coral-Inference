@@ -9,6 +9,8 @@ from inference.core.roboflow_api import (
     ModelEndpointType,
     get_roboflow_model_data,
     get_from_url,
+    wrap_roboflow_api_errors,
+    _get_from_url
 )
 from inference.core.cache.model_artifacts import save_bytes_in_cache
 from inference.core.models.roboflow import OnnxRoboflowInferenceModel
