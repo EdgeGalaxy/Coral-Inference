@@ -108,18 +108,10 @@ class MetricSink:
                 logger.warning(f"MetricSink InfluxDB 连接测试失败: {test_err}")
             self._enabled = True
 
-            # 启动后台线程
-            self._worker = threading.Thread(
-                target=self._worker_loop,
-                name=f"MetricSinkWorker-{pipeline_id}",
-                daemon=True,
-            )
-            self._worker.start()
+            # 启动后台工作线程（单线程）
             logger.info(
                 f"MetricSink (v3) enabled for pipeline_id={pipeline_id}, database={INFLUXDB_METRICS_DATABASE}, queue_size={queue_size}"
             )
-            
-            # 启动后台工作线程
             self._start_worker_thread()
         except Exception as error:
             logger.exception(f"Failed to initialise InfluxDB 3 client: {error}")
@@ -290,13 +282,15 @@ class MetricSink:
                         p = p.tag("source_id", str(source_id))
                     # fields
                     for k, v in fields.items():
+                        if v is None:
+                            continue
+                        # 统一写入数值类型，避免同名字段混用不同类型
                         if isinstance(v, (int, bool)):
                             p = p.field(k, v)
                         elif isinstance(v, float):
-                            p = p.field(k, str(round(v, 2)))
-                        elif v is None:
-                            continue
+                            p = p.field(k, round(v, 2))
                         else:
+                            # 非数值类型一律转字符串
                             p = p.field(k, str(v))
                     # timestamp 使用帧时间，若无则使用 now
                     ts = single_frame.frame_timestamp or now
