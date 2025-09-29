@@ -20,15 +20,11 @@ from coral_inference.core.env import (
 )
 
 
-def _ns_between(now: datetime, then: Optional[datetime]) -> int:
+def _ms_between(now: datetime, then: Optional[datetime]) -> int:
     if then is None:
         return 0
-    if then.tzinfo is None:
-        then = then.replace(tzinfo=timezone.utc)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
     delta = now - then
-    return int(delta.total_seconds() * 1_000_000_000)
+    return int(delta.total_seconds() * 1_000)
 
 
 def _extract_fields_from_prediction(pred: Optional[dict], selected_fields: List[str]) -> Dict[str, Any]:
@@ -149,7 +145,7 @@ class MetricSink:
             queue_item = {
                 'predictions': predictions,
                 'video_frame': video_frame,
-                'timestamp': datetime.now(timezone.utc)
+                'timestamp': datetime.now()
             }
             
             # 非阻塞推送，避免阻塞主线程
@@ -265,13 +261,13 @@ class MetricSink:
                     continue
 
                 source_id = single_frame.source_id
-                duration_ns = _ns_between(now, single_frame.frame_timestamp)
+                duration_ms = _ms_between(now, single_frame.frame_timestamp)
 
                 fields: Dict[str, Any] = {}
                 # 从配置中提取字段
                 fields.update(_extract_fields_from_prediction(single_pred, self._selected_fields))
                 # 补充 duration 字段（纳秒）
-                fields["duration"] = duration_ns
+                fields["duration"] = duration_ms
 
                 try:
                     # 构建 Point（InfluxDB 3 客户端）

@@ -337,8 +337,8 @@ class TimeBasedVideoSink:
                 
         except Exception as e:
             logger.error(f"VideoSink worker crashed: {e}")
-        finally:
-            logger.info(f"VideoSink worker exiting for pipeline {self.pipeline_id}")
+        # finally:
+        #     logger.info(f"VideoSink worker exiting for pipeline {self.pipeline_id}")
 
     def _extract_image_from_prediction(self, prediction: Optional[dict]) -> Optional[np.ndarray]:
         """从预测结果中提取图像"""

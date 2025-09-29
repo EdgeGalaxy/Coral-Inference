@@ -403,7 +403,7 @@ class InfluxDBMetricsCollector:
         pipeline_point = pipeline_point.tag("pipeline_id", pipeline_id)
         pipeline_point = pipeline_point.tag("pipeline_name", pipeline_name)
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
-        pipeline_point = pipeline_point.field("throughput", round(float(inference_throughput), 2))
+        pipeline_point = pipeline_point.field("throughput", int(round(float(inference_throughput))))
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
         pipeline_point = pipeline_point.time(dt)
         points.append(pipeline_point)
@@ -438,13 +438,13 @@ class InfluxDBMetricsCollector:
             if latency_data:
                 # 延迟指标 - 存储为数值类型以支持聚合查询
                 if "latency_mean" in latency_data:
-                    point = point.field("latency_mean", round(float(latency_data["latency_mean"]), 2))
+                    point = point.field("latency_mean", int(round(float(latency_data["latency_mean"]))))
                 if "latency_p50" in latency_data:
-                    point = point.field("latency_p50", round(float(latency_data["latency_p50"]), 2))
+                    point = point.field("latency_p50", int(round(float(latency_data["latency_p50"]))))
                 if "latency_p90" in latency_data:
-                    point = point.field("latency_p90", round(float(latency_data["latency_p90"]), 2))
+                    point = point.field("latency_p90", int(round(float(latency_data["latency_p90"]))))
                 if "latency_p99" in latency_data:
-                    point = point.field("latency_p99", round(float(latency_data["latency_p99"]), 2))
+                    point = point.field("latency_p99", int(round(float(latency_data["latency_p99"]))))
                     
                 # 帧处理指标
                 if "frames_processed" in latency_data:
@@ -584,7 +584,7 @@ class InfluxDBMetricsCollector:
                                         if value.endswith('i'):
                                             point_dict["fields"][key] = int(value[:-1])
                                         elif '.' in value:
-                                            point_dict["fields"][key] = int(value)
+                                            point_dict["fields"][key] = float(value)
                                         else:
                                             point_dict["fields"][key] = value.strip('"')
                                     except ValueError:
