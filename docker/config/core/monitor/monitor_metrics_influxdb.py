@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from concurrent.futures import ThreadPoolExecutor
+from typing import Set, Tuple
 
 from loguru import logger
 from influxdb_client_3 import InfluxDBClient3, Point
@@ -29,8 +30,10 @@ class DataValidator:
     def validate_latency_report(report: Dict) -> bool:
         """验证延迟报告数据"""
         required_fields = ['source_id']
-        numeric_fields = ['latency_mean', 'latency_p50', 'latency_p90', 'latency_p99', 
-                         'frames_processed', 'fps', 'dropped_frames', 'queue_size']
+        numeric_fields = [
+            'inference_latency', 'e2e_latency', 'frame_decoding_latency',
+            'frames_processed', 'fps', 'dropped_frames', 'queue_size'
+        ]
         
         # 检查必须字段
         for field in required_fields:
@@ -39,7 +42,7 @@ class DataValidator:
                 
         # 检查数值字段
         for field in numeric_fields:
-            if field in report:
+            if field in report and report[field] is not None:
                 try:
                     value = float(report[field])
                     if value < 0:  # 负数检查
@@ -161,9 +164,6 @@ class InfluxDBMetricsCollector:
     - Fields:
         - throughput: 推理吞吐量 (fps)
         - latency_mean: 平均延迟 (ms)
-        - latency_p50: P50 延迟 (ms)
-        - latency_p90: P90 延迟 (ms)
-        - latency_p99: P99 延迟 (ms)
         - frames_processed: 已处理帧数
         - fps: 每个源的实时 FPS
         - queue_size: 队列大小
@@ -235,6 +235,10 @@ class InfluxDBMetricsCollector:
         
         # 用于异步写入的线程池
         self._executor = ThreadPoolExecutor(max_workers=2)
+
+        # 列缓存（用于动态构建查询，避免首次无列导致的查询报错）
+        self._columns_cache: Tuple[Set[str], float] = (set(), 0.0)
+        self._columns_cache_ttl: float = 60.0
         
     def _init_influxdb_client(self):
         """初始化 InfluxDB3 客户端"""
@@ -333,6 +337,7 @@ class InfluxDBMetricsCollector:
                 # 获取 pipeline 状态
                 response = await self.stream_manager_client.get_status(pipeline_id)
                 report = response.report
+                logger.info(f"Pipeline {pipeline_cache_id} 状态报告: {report}")
                 
                 # 验证数据有效性
                 if not self.validator.validate_pipeline_report(report):
@@ -405,13 +410,25 @@ class InfluxDBMetricsCollector:
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
         pipeline_point = pipeline_point.field("throughput", int(round(float(inference_throughput))))
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
+        # 计算 pipeline 级 e2e_latency（取各源最大值，单位 ms）
+        try:
+            e2e_values_ms = []
+            for lr in latency_reports:
+                v = lr.get("e2e_latency")
+                if v is not None:
+                    e2e_values_ms.append(float(v) * 1000.0)
+            if e2e_values_ms:
+                pipeline_point = pipeline_point.field("e2e_latency", int(round(max(e2e_values_ms))))
+        except Exception as _:
+            pass
         pipeline_point = pipeline_point.time(dt)
         points.append(pipeline_point)
         
         # 为每个数据源创建指标点
         for source_metadata in sources_metadata:
-            source_id = source_metadata.get("source_id", "")
-            if not source_id:
+            source_id = source_metadata.get("source_id", None)
+            # 允许 0 作为有效的 source_id，只有 None 或空字符串才跳过
+            if source_id is None or (isinstance(source_id, str) and source_id.strip() == ""):
                 continue
                 
             # 创建 Point
@@ -434,34 +451,27 @@ class InfluxDBMetricsCollector:
                     latency_data = latency_report
                     break
                     
-            # 设置 Fields
+            # 设置 Fields（仅写入延迟，单位 ms）
             if latency_data:
-                # 延迟指标 - 存储为数值类型以支持聚合查询
-                if "latency_mean" in latency_data:
-                    point = point.field("latency_mean", int(round(float(latency_data["latency_mean"]))))
-                if "latency_p50" in latency_data:
-                    point = point.field("latency_p50", int(round(float(latency_data["latency_p50"]))))
-                if "latency_p90" in latency_data:
-                    point = point.field("latency_p90", int(round(float(latency_data["latency_p90"]))))
-                if "latency_p99" in latency_data:
-                    point = point.field("latency_p99", int(round(float(latency_data["latency_p99"]))))
-                    
-                # 帧处理指标
-                if "frames_processed" in latency_data:
-                    point = point.field("frames_processed", int(latency_data["frames_processed"]))
-                if "fps" in latency_data:
-                    point = point.field("fps", int(latency_data["fps"]))
-                if "dropped_frames" in latency_data:
-                    point = point.field("dropped_frames", int(latency_data["dropped_frames"]))
-                if "queue_size" in latency_data:
-                    point = point.field("queue_size", int(latency_data["queue_size"]))
-                    
-            # 从 source_metadata 中提取额外字段
-            if "buffer_size" in source_metadata:
-                point = point.field("buffer_size", int(source_metadata["buffer_size"]))
-            if "frame_count" in source_metadata:
-                point = point.field("frame_count", int(source_metadata["frame_count"]))
-                
+                try:
+                    if latency_data.get("frame_decoding_latency") is not None:
+                        v = float(latency_data["frame_decoding_latency"]) * 1000.0
+                        point = point.field("frame_decoding_latency", int(round(v)))
+                except Exception:
+                    pass
+                try:
+                    if latency_data.get("inference_latency") is not None:
+                        v = float(latency_data["inference_latency"]) * 1000.0
+                        point = point.field("inference_latency", int(round(v)))
+                except Exception:
+                    pass
+                try:
+                    if latency_data.get("e2e_latency") is not None:
+                        v = float(latency_data["e2e_latency"]) * 1000.0
+                        point = point.field("e2e_latency", int(round(v)))
+                except Exception:
+                    pass
+
             # 设置时间戳
             point = point.time(dt)
             points.append(point)
@@ -717,34 +727,49 @@ class InfluxDBMetricsCollector:
             return {}
             
         try:
-            # 构建 SQL 查询 (InfluxDB3 使用 SQL)
+            # 构建 SQL 查询 (InfluxDB3 使用 SQL) - 动态选择已存在的列
+            available = self._get_available_columns()
+            # 通用的时间桶表达式
+            bucket_expr = (
+                f"date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket"
+            )
             if level == "pipeline":
+                select_parts = [
+                    bucket_expr,
+                    "AVG(CAST(throughput AS DOUBLE)) as avg_throughput",
+                    "AVG(CAST(source_count AS DOUBLE)) as avg_source_count",
+                ]
+                if "e2e_latency" in available:
+                    select_parts.append("AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency")
+                select_parts.append("COUNT(*) as data_points")
+                select_clause = ",\n                        ".join(select_parts)
                 query = f"""
-                    SELECT 
-                        date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
-                        AVG(CAST(throughput AS DOUBLE)) as avg_throughput,
-                        AVG(CAST(source_count AS DOUBLE)) as avg_source_count,
-                        COUNT(*) as data_points
+                    SELECT
+                        {select_clause}
                     FROM {self.measurement}
-                    WHERE 
+                    WHERE
                         pipeline_id = '{pipeline_id}'
                         AND time >= TIMESTAMP '{start_time.isoformat()}'
                         AND time <= TIMESTAMP '{end_time.isoformat()}'
-                        AND level = 'pipeline'
                     GROUP BY bucket
                     ORDER BY bucket
                 """
             else:
+                select_parts = [
+                    bucket_expr,
+                    "source_id",
+                ]
+                if "frame_decoding_latency" in available:
+                    select_parts.append("AVG(CAST(frame_decoding_latency AS DOUBLE)) as avg_frame_decoding_latency")
+                if "inference_latency" in available:
+                    select_parts.append("AVG(CAST(inference_latency AS DOUBLE)) as avg_inference_latency")
+                if "e2e_latency" in available:
+                    select_parts.append("AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency")
+                select_parts.append("COUNT(*) as data_points")
+                select_clause = ",\n                        ".join(select_parts)
                 query = f"""
                     SELECT 
-                        date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket,
-                        source_id,
-                        AVG(CAST(latency_mean AS DOUBLE)) as avg_latency,
-                        MAX(CAST(latency_p99 AS DOUBLE)) as max_p99_latency,
-                        AVG(CAST(fps AS DOUBLE)) as avg_fps,
-                        SUM(CAST(frames_processed AS DOUBLE)) as total_frames,
-                        SUM(CAST(dropped_frames AS DOUBLE)) as total_dropped,
-                        COUNT(*) as data_points
+                        {select_clause}
                     FROM {self.measurement}
                     WHERE 
                         pipeline_id = '{pipeline_id}'
@@ -785,12 +810,14 @@ class InfluxDBMetricsCollector:
                             item.update({
                                 "avg_throughput": float(row.get("avg_throughput")) if row.get("avg_throughput") is not None else None,
                                 "avg_source_count": float(row.get("avg_source_count")) if row.get("avg_source_count") is not None else None,
+                                "avg_latency_mean": float(row.get("avg_latency_mean")) if row.get("avg_latency_mean") is not None else None,
+                                "total_frames": float(row.get("total_frames")) if row.get("total_frames") is not None else None,
+                                "total_dropped": float(row.get("total_dropped")) if row.get("total_dropped") is not None else None,
                             })
                         else:
                             item.update({
                                 "source_id": str(row.get("source_id")) if row.get("source_id") is not None else None,
                                 "avg_latency": float(row.get("avg_latency")) if row.get("avg_latency") is not None else None,
-                                "max_p99_latency": float(row.get("max_p99_latency")) if row.get("max_p99_latency") is not None else None,
                                 "avg_fps": float(row.get("avg_fps")) if row.get("avg_fps") is not None else None,
                                 "total_frames": float(row.get("total_frames")) if row.get("total_frames") is not None else None,
                                 "total_dropped": float(row.get("total_dropped")) if row.get("total_dropped") is not None else None,
@@ -815,7 +842,6 @@ class InfluxDBMetricsCollector:
                                 item.update({
                                     "source_id": str(record_dict.get("source_id")) if record_dict.get("source_id") is not None else None,
                                     "avg_latency": float(record_dict.get("avg_latency")) if record_dict.get("avg_latency") is not None else None,
-                                    "max_p99_latency": float(record_dict.get("max_p99_latency")) if record_dict.get("max_p99_latency") is not None else None,
                                     "avg_fps": float(record_dict.get("avg_fps")) if record_dict.get("avg_fps") is not None else None,
                                     "total_frames": float(record_dict.get("total_frames")) if record_dict.get("total_frames") is not None else None,
                                     "total_dropped": float(record_dict.get("total_dropped")) if record_dict.get("total_dropped") is not None else None,
@@ -833,7 +859,7 @@ class InfluxDBMetricsCollector:
         except Exception as e:
             logger.error(f"查询 InfluxDB 失败: {e}")
             return {}
-    
+
     def _execute_query(self, query: str):
         """同步执行查询（在线程池中运行）"""
         try:
@@ -841,6 +867,46 @@ class InfluxDBMetricsCollector:
         except Exception as e:
             logger.error(f"执行查询失败: {e}")
             return None
+
+    def _get_available_columns(self) -> Set[str]:
+        """查询 measurement 已存在的列（包含 field 与 tag），带缓存。"""
+        try:
+            import time as _time
+            columns, ts = self._columns_cache
+            if _time.time() - ts < self._columns_cache_ttl and columns:
+                return columns
+
+            # information_schema 查询
+            info_query = (
+                f"SELECT column_name FROM information_schema.columns "
+                f"WHERE table_name = '{self.measurement}'"
+            )
+            result = self._execute_query(info_query)
+            cols: Set[str] = set()
+            if result is not None:
+                try:
+                    # pyarrow 表 → pandas
+                    import pandas as pd
+                    df = result.to_pandas() if hasattr(result, 'to_pandas') else pd.DataFrame(result)
+                    for _, row in df.iterrows():
+                        cn = row.get('column_name') if 'column_name' in row else row.get(0)
+                        if cn:
+                            cols.add(str(cn))
+                except Exception:
+                    try:
+                        for rec in result:
+                            d = rec.to_dict() if hasattr(rec, 'to_dict') else dict(rec)
+                            cn = d.get('column_name')
+                            if cn:
+                                cols.add(str(cn))
+                    except Exception:
+                        pass
+
+            self._columns_cache = (cols, _time.time())
+            return cols
+        except Exception as e:
+            logger.warning(f"读取 measurement 列失败，使用空集: {e}")
+            return set()
 
 
 # 使用示例和集成函数

@@ -116,7 +116,6 @@ class MetricDataPoint(BaseModel):
     time: Optional[str] = Field(None, description="时间戳")
     source_id: Optional[str] = Field(None, description="源ID")
     avg_latency: Optional[float] = Field(None, description="平均延迟（ms）", ge=0)
-    max_p99_latency: Optional[float] = Field(None, description="P99最大延迟（ms）", ge=0)
     avg_fps: Optional[float] = Field(None, description="平均FPS", ge=0)
     total_frames: Optional[int] = Field(None, description="总帧数", ge=0)
     total_dropped: Optional[int] = Field(None, description="总丢帧数", ge=0)
@@ -214,6 +213,12 @@ def register_monitor_routes(app: FastAPI) -> None:
                     buckets = sorted({r.get('time') for r in rows if r.get('time')})
                     dates = buckets[:]
                     datasets = []
+                    # 统计当前有效字段（出现且非 None）
+                    def has_field(field_name: str) -> bool:
+                        for r in rows:
+                            if field_name in r and r.get(field_name) is not None:
+                                return True
+                        return False
 
                     if (level or "source") == "pipeline":
                         # 期望每个 bucket 有一条记录
@@ -222,6 +227,10 @@ def register_monitor_routes(app: FastAPI) -> None:
                         source_count_data = [float(bucket_map.get(ts, {}).get('avg_source_count', 0) or 0) for ts in dates]
                         datasets.append({"name": "Throughput", "data": throughput_data})
                         datasets.append({"name": "Source Count", "data": source_count_data})
+
+                        if has_field('avg_e2e_latency'):
+                            e2e_latency_data = [float(bucket_map.get(ts, {}).get('avg_e2e_latency', 0) or 0) for ts in dates]
+                            datasets.append({"name": "E2E Latency", "data": e2e_latency_data})
                     else:
                         # source 级别：每个 bucket 可能存在多个 source 条目
                         # 1) 汇总吞吐量为 sum(avg_fps)
@@ -232,12 +241,7 @@ def register_monitor_routes(app: FastAPI) -> None:
                                 continue
                             rows_by_bucket.setdefault(ts, []).append(r)
 
-                        throughput_data = []
-                        for ts in dates:
-                            per_bucket = rows_by_bucket.get(ts, [])
-                            s = sum(float(x.get('avg_fps') or 0) for x in per_bucket)
-                            throughput_data.append(s)
-                        datasets.append({"name": "Throughput", "data": throughput_data})
+                        # 源级不再提供 fps，因此不再聚合 Throughput
 
                         # 2) 按 source_id 构建多组数据
                         sources = sorted({str(r.get('source_id')) for r in rows if r.get('source_id') is not None})
@@ -245,24 +249,24 @@ def register_monitor_routes(app: FastAPI) -> None:
                         idx = {(r.get('time'), str(r.get('source_id'))): r for r in rows if r.get('time') and r.get('source_id') is not None}
 
                         for sid in sources:
-                            latency_mean = []
-                            latency_p99 = []
-                            fps = []
-                            frames = []
-                            dropped = []
+                            frame_decoding = []
+                            inference_lat = []
+                            e2e_lat = []
                             for ts in dates:
                                 rec = idx.get((ts, sid)) or {}
-                                latency_mean.append(float(rec.get('avg_latency', 0) or 0))
-                                latency_p99.append(float(rec.get('max_p99_latency', 0) or 0))
-                                fps.append(float(rec.get('avg_fps', 0) or 0))
-                                frames.append(float(rec.get('total_frames', 0) or 0))
-                                dropped.append(float(rec.get('total_dropped', 0) or 0))
+                                if has_field('avg_frame_decoding_latency'):
+                                    frame_decoding.append(float(rec.get('avg_frame_decoding_latency', 0) or 0))
+                                if has_field('avg_inference_latency'):
+                                    inference_lat.append(float(rec.get('avg_inference_latency', 0) or 0))
+                                if has_field('avg_e2e_latency'):
+                                    e2e_lat.append(float(rec.get('avg_e2e_latency', 0) or 0))
 
-                            datasets.append({"name": f"Inference Latency ({sid})", "data": latency_mean})
-                            datasets.append({"name": f"Inference Latency P99 ({sid})", "data": latency_p99})
-                            datasets.append({"name": f"FPS ({sid})", "data": fps})
-                            datasets.append({"name": f"Frames Processed ({sid})", "data": frames})
-                            datasets.append({"name": f"Dropped Frames ({sid})", "data": dropped})
+                            if has_field('avg_frame_decoding_latency'):
+                                datasets.append({"name": f"Frame Decoding ({sid})", "data": frame_decoding})
+                            if has_field('avg_inference_latency'):
+                                datasets.append({"name": f"Inference Latency ({sid})", "data": inference_lat})
+                            if has_field('avg_e2e_latency'):
+                                datasets.append({"name": f"E2E Latency ({sid})", "data": e2e_lat})
 
                     metrics = {"dates": dates, "datasets": datasets}
                 else:
@@ -468,7 +472,6 @@ def register_monitor_routes(app: FastAPI) -> None:
                         time=point.get('time'),
                         source_id=point.get('source_id'),
                         avg_latency=point.get('avg_latency'),
-                        max_p99_latency=point.get('max_p99_latency'),
                         avg_fps=point.get('avg_fps'),
                         total_frames=point.get('total_frames'),
                         total_dropped=point.get('total_dropped')
@@ -551,4 +554,3 @@ def register_monitor_routes(app: FastAPI) -> None:
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"获取InfluxDB状态失败: {str(e)}")
-
