@@ -38,7 +38,9 @@ async def download_video(video_url: str) -> str:
         return video_url
 
 
-async def download_videos_parallel(video_references: List[Union[str, int]]) -> List[Union[str, int]]:
+async def download_videos_parallel(
+    video_references: List[Union[str, int]],
+) -> List[Union[str, int]]:
     tasks = []
     for ref in video_references:
         if isinstance(ref, str) and ref.startswith(("http://", "https://")):
@@ -54,9 +56,10 @@ def cleanup_pipeline_videos(pipeline_id: str) -> None:
         pipeline_dir = VIDEO_DOWNLOAD_DIR / pipeline_id
         if pipeline_dir.exists():
             import shutil
+
             shutil.rmtree(pipeline_dir)
             logger.info(f"Cleaned up video files for pipeline {pipeline_id}")
     except Exception as e:
-        logger.error(f"Error cleaning up video files for pipeline {pipeline_id}: {str(e)}")
-
-
+        logger.error(
+            f"Error cleaning up video files for pipeline {pipeline_id}: {str(e)}"
+        )

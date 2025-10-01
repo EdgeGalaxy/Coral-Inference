@@ -43,7 +43,7 @@ def test_batch_line_counter_zone_visualization_block() -> None:
         np.random.randint(0, 255, (1000, 1000, 3), dtype=np.uint8),
         np.random.randint(0, 255, (800, 600, 3), dtype=np.uint8),
     ]
-    
+
     images = [
         WorkflowImageData(
             parent_metadata=ImageParentMetadata(parent_id="some1"),
@@ -54,15 +54,15 @@ def test_batch_line_counter_zone_visualization_block() -> None:
             numpy_image=start_images[1],
         ),
     ]
-    
+
     zones = [
         [(10, 10), (100, 100)],
         [(20, 20), (200, 200)],
     ]
-    
+
     count_ins = [7, 3]
     count_outs = [1, 5]
-    
+
     outputs = block.run(
         images=images,
         zones=zones,
@@ -79,7 +79,7 @@ def test_batch_line_counter_zone_visualization_block() -> None:
     # then
     assert isinstance(outputs, list)
     assert len(outputs) == 2
-    
+
     for i, output in enumerate(outputs):
         assert isinstance(output, dict)
         assert "image" in output
@@ -102,11 +102,11 @@ def test_batch_line_counter_zone_visualization_block_with_copy_false() -> None:
             numpy_image=start_image,
         )
     ]
-    
+
     zones = [[(50, 50), (150, 150)]]
     count_ins = [2]
     count_outs = [4]
-    
+
     outputs = block.run(
         images=images,
         zones=zones,
@@ -162,11 +162,11 @@ def test_batch_line_counter_zone_visualization_block_single_item() -> None:
             numpy_image=start_image,
         )
     ]
-    
+
     zones = [[(30, 30), (100, 100)]]
     count_ins = [10]
     count_outs = [5]
-    
+
     outputs = block.run(
         images=images,
         zones=zones,
@@ -197,26 +197,26 @@ def test_batch_line_counter_zone_visualization_block_cache_usage() -> None:
     # Create two images with the same dimensions
     start_image1 = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
     start_image2 = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
-    
+
     images1 = [
         WorkflowImageData(
             parent_metadata=ImageParentMetadata(parent_id="cache1"),
             numpy_image=start_image1,
         )
     ]
-    
+
     images2 = [
         WorkflowImageData(
             parent_metadata=ImageParentMetadata(parent_id="cache2"),
             numpy_image=start_image2,
         )
     ]
-    
+
     # Same zone and parameters should use cache
     zones = [[(40, 40), (140, 140)]]
     count_ins = [3]
     count_outs = [7]
-    
+
     # when - first run
     outputs1 = block.run(
         images=images1,
@@ -230,7 +230,7 @@ def test_batch_line_counter_zone_visualization_block_cache_usage() -> None:
         count_ins=count_ins,
         count_outs=count_outs,
     )
-    
+
     # when - second run with same parameters (should use cache)
     outputs2 = block.run(
         images=images2,

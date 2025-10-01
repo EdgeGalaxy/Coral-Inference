@@ -132,7 +132,9 @@ def register_video_stream_routes(
                 ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95]
             )
             if not success:
-                return VideoCaptureResponse(status="error", error="无法编码图片为JPEG格式")
+                return VideoCaptureResponse(
+                    status="error", error="无法编码图片为JPEG格式"
+                )
             image_base64 = base64.b64encode(buffer).decode("utf-8")
             return VideoCaptureResponse(
                 status="success", image_base64=image_base64, width=width, height=height
@@ -154,7 +156,9 @@ def register_video_stream_routes(
     ) -> VideoListResponse:
         try:
             # real_id = _map_pipeline_id(pipeline_id)
-            base_dir = os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
+            base_dir = os.path.join(
+                MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory
+            )
             if not os.path.isdir(base_dir):
                 return VideoListResponse(status="success", files=[])
 
@@ -282,7 +286,9 @@ def register_video_stream_routes(
                 asyncio.run_coroutine_threadsafe(
                     video_frame_producer_task(), webrtc_manager.loop
                 )
-            return WebRTCStreamResponse(status="success", sdp=result.sdp, type=result.type)
+            return WebRTCStreamResponse(
+                status="success", sdp=result.sdp, type=result.type
+            )
         except Exception as e:
             if video_producer:
                 try:
@@ -294,6 +300,6 @@ def register_video_stream_routes(
                     webrtc_manager.cleanup()
                 except Exception:
                     pass
-            raise HTTPException(status_code=500, detail=f"创建WebRTC视频流失败: {str(e)}")
-
-
+            raise HTTPException(
+                status_code=500, detail=f"创建WebRTC视频流失败: {str(e)}"
+            )

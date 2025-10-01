@@ -1,10 +1,12 @@
 from inference.core.models import roboflow
 from inference.core.logger import logger
 from inference.core.interfaces.stream import sinks
-from inference.core.interfaces.camera import video_source 
+from inference.core.interfaces.camera import video_source
 from inference.core.interfaces.stream_manager.api import stream_manager_client
 from inference.core.interfaces.stream_manager.manager_app import app
-from inference.core.interfaces.stream_manager.manager_app import inference_pipeline_manager
+from inference.core.interfaces.stream_manager.manager_app import (
+    inference_pipeline_manager,
+)
 
 from coral_inference.core.models import utils as model_utils
 from coral_inference.core.models.utils import get_runtime_platform
@@ -48,11 +50,19 @@ else:
     )
 
 roboflow.get_from_url = model_utils.get_from_url
-sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(sinks.InMemoryBufferSink.__init__)
-sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(sinks.InMemoryBufferSink.on_prediction)
+sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(
+    sinks.InMemoryBufferSink.__init__
+)
+sinks.InMemoryBufferSink.on_prediction = patch_sinks.extend_on_prediction(
+    sinks.InMemoryBufferSink.on_prediction
+)
 video_source.CV2VideoFrameProducer = patch_video_source.PatchedCV2VideoFrameProducer
-inference_pipeline_manager.InferencePipelineManager._offer = patch_pipeline_manager.offer
-inference_pipeline_manager.InferencePipelineManager._handle_command = patch_pipeline_manager.rewrite_handle_command
+inference_pipeline_manager.InferencePipelineManager._offer = (
+    patch_pipeline_manager.offer
+)
+inference_pipeline_manager.InferencePipelineManager._handle_command = (
+    patch_pipeline_manager.rewrite_handle_command
+)
 stream_manager_client.StreamManagerClient.offer = patch_manager_client.offer
 app.InferencePipelinesManagerHandler.handle = patch_app.rewrite_handle
 # app.execute_termination = patch_app.rewrite_execute_termination

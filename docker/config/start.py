@@ -1,6 +1,5 @@
-from coral_inference.core import runtime_platform, logger # noqa
+from coral_inference.core import runtime_platform, logger  # noqa
 from inference.core.interfaces.stream_manager.manager_app.app import start
-
 
 
 if __name__ == "__main__":

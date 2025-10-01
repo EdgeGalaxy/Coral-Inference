@@ -4,13 +4,16 @@ from fastapi import FastAPI, Query, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 
-from inference.core.interfaces.http.http_api import with_route_exceptions, with_route_exceptions_async
+from inference.core.interfaces.http.http_api import (
+    with_route_exceptions,
+    with_route_exceptions_async,
+)
 from inference.core.interfaces.stream_manager.api.entities import (
     InitializeWebRTCPipelineResponse,
     CommandResponse,
     ConsumePipelineResponse,
     InferencePipelineStatusResponse,
-    ListPipelinesResponse
+    ListPipelinesResponse,
 )
 from inference.core.interfaces.stream_manager.api.stream_manager_client import (
     StreamManagerClient,
@@ -27,7 +30,11 @@ from ..pipeline.pipeline_utils import (
 )
 
 
-def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerClient, pipeline_cache: PipelineCache) -> None:
+def register_pipeline_routes(
+    app: FastAPI,
+    stream_manager_client: StreamManagerClient,
+    pipeline_cache: PipelineCache,
+) -> None:
     @app.get(
         "/inference_pipelines/list",
         summary="[EXPERIMENTAL] List active InferencePipelines",
@@ -50,24 +57,25 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         req_dict: Dict[str, any] = await request.json()
 
         processing_configuration = req_dict.get("processing_configuration") or {}
-        workflows_parameters = processing_configuration.get("workflows_parameters") or {}
+        workflows_parameters = (
+            processing_configuration.get("workflows_parameters") or {}
+        )
 
-        is_file_source =  workflows_parameters.get("is_file_source", False)
+        is_file_source = workflows_parameters.get("is_file_source", False)
 
         if is_file_source:
-            video_references = (
-                req_dict.get("video_configuration", {}).get("video_reference", [])
+            video_references = req_dict.get("video_configuration", {}).get(
+                "video_reference", []
             )
             if isinstance(video_references, list) and video_references:
                 downloaded_paths = await download_videos_parallel(video_references)
-                req_dict.setdefault("video_configuration", {})[
-                    "video_reference"
-                ] = downloaded_paths
+                req_dict.setdefault("video_configuration", {})["video_reference"] = (
+                    downloaded_paths
+                )
 
-        output_image_fields = (
-            workflows_parameters.get("output_image_fields", [])
-            + ["source_image"]
-        )
+        output_image_fields = workflows_parameters.get("output_image_fields", []) + [
+            "source_image"
+        ]
         pipeline_name = workflows_parameters.get("pipeline_name", "")
         auto_restart = workflows_parameters.get("auto_restart", not is_file_source)
 
@@ -77,7 +85,9 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         )
 
         try:
-            resp_dict = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
+            resp_dict = (
+                resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
+            )
             pipeline_id = (resp_dict.get("context", {}) or {}).get("pipeline_id")
         except Exception:
             pipeline_id = None
@@ -159,5 +169,3 @@ def register_pipeline_routes(app: FastAPI, stream_manager_client: StreamManagerC
         return await stream_manager_client.consume_pipeline_result(
             pipeline_id=real_id, excluded_fields=request.excluded_fields
         )
-
-

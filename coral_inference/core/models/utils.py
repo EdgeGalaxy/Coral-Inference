@@ -8,7 +8,7 @@ from inference.core.exceptions import ModelArtefactError
 from inference.core.roboflow_api import (
     get_from_url,
     wrap_roboflow_api_errors,
-    _get_from_url
+    _get_from_url,
 )
 from coral_inference.core.log import logger
 
@@ -16,7 +16,6 @@ from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
 
 
 class RknnInferenceSession:
-
     def __init__(self, model_fp: str, inputs: Any, device_id: int = 0):
         try:
             from rknnlite.api import RKNNLite as RKNN

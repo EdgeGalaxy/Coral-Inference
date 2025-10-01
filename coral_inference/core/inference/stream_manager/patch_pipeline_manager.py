@@ -22,15 +22,17 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     OperationStatus,
     InitialisePipelinePayload,
     BufferFillingStrategy,
-    BufferConsumptionStrategy
+    BufferConsumptionStrategy,
 )
-from inference.core.interfaces.stream_manager.manager_app.inference_pipeline_manager import InferencePipelineManager
+from inference.core.interfaces.stream_manager.manager_app.inference_pipeline_manager import (
+    InferencePipelineManager,
+)
 from inference.core.workflows.errors import WorkflowSyntaxError
 
 from coral_inference.core.inference.stream_manager.entities import (
     ExtendCommandType,
     PatchInitialiseWebRTCPipelinePayload,
-    VideoRecordSinkConfiguration
+    VideoRecordSinkConfiguration,
 )
 from coral_inference.core.inference.camera.webrtc_manager import (
     WebRTCConnectionConfig,
@@ -43,7 +45,7 @@ from coral_inference.core.inference.stream.metric_sink import MetricSink
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
     try:
         logger.info(f"使用WebRTCManager创建WebRTC连接 request_id={request_id}")
-        
+
         # 解析payload
         parsed_payload = PatchInitialiseWebRTCPipelinePayload.model_validate(payload)
 
@@ -55,13 +57,12 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
             processing_timeout=parsed_payload.processing_timeout,
             max_consecutive_timeouts=parsed_payload.max_consecutive_timeouts,
             min_consecutive_on_time=parsed_payload.min_consecutive_on_time,
-            stream_output=parsed_payload.stream_output
+            stream_output=parsed_payload.stream_output,
         )
 
         # 使用便捷函数创建WebRTC连接（pipeline模式）
         result = create_webrtc_connection_with_pipeline_buffer(
-            config=config,
-            webrtc_buffer=self._buffer_sink._webrtc_buffer
+            config=config, webrtc_buffer=self._buffer_sink._webrtc_buffer
         )
 
         if result.success:
@@ -76,7 +77,9 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
                     },
                 )
             )
-            logger.info(f"WebRTC pipeline initialised successfully. request_id={request_id}")
+            logger.info(
+                f"WebRTC pipeline initialised successfully. request_id={request_id}"
+            )
         else:
             # 连接创建失败
             self._handle_error(
@@ -85,7 +88,7 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
                 public_error_message=f"Failed to create WebRTC connection: {result.error}",
                 error_type=ErrorType.INTERNAL_ERROR,
             )
-            
+
     except (
         ValidationError,
         MissingApiKeyError,
@@ -142,11 +145,11 @@ def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
             return self._consume_results(request_id=request_id, payload=payload)
         if command_type is ExtendCommandType.OFFER:
             return offer(self, request_id=request_id, payload=payload)
-        raise NotImplementedError(
-            f"Command type `{command_type}` cannot be handled"
-        )
+        raise NotImplementedError(f"Command type `{command_type}` cannot be handled")
     except KeyError as error:
-        logger.exception(f"Invalid command sent to InferencePipeline manager - malformed payload")
+        logger.exception(
+            f"Invalid command sent to InferencePipeline manager - malformed payload"
+        )
         self._handle_error(
             request_id=request_id,
             error=error,
@@ -170,7 +173,9 @@ def rewrite_handle_command(self, request_id: str, payload: dict) -> None:
         )
 
 
-def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
+def initialise_pipeline(
+    self: InferencePipelineManager, request_id: str, payload: dict
+) -> None:
     """
     修改版本的 _initialise_pipeline 函数，使用 multi_sink 方式支持多个 sink
     默认包含 InMemoryBufferSink，可以传入额外的 sinks
@@ -178,28 +183,52 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
     try:
         self._watchdog = BasePipelineWatchDog()
         parsed_payload = InitialisePipelinePayload.model_validate(payload)
-        used_pipeline_id = parsed_payload.processing_configuration.workflows_parameters.get("used_pipeline_id")
-        is_file_source = parsed_payload.processing_configuration.workflows_parameters.get("is_file_source")
+        used_pipeline_id = (
+            parsed_payload.processing_configuration.workflows_parameters.get(
+                "used_pipeline_id"
+            )
+        )
+        is_file_source = (
+            parsed_payload.processing_configuration.workflows_parameters.get(
+                "is_file_source"
+            )
+        )
         video_reference = parsed_payload.video_configuration.video_reference
-        source_buffer_filling_strategy = BufferFillingStrategy.ADAPTIVE_DROP_OLDEST if not is_file_source else BufferFillingStrategy.WAIT
-        source_buffer_consumption_strategy = BufferConsumptionStrategy.EAGER if not is_file_source else BufferConsumptionStrategy.LAZY
+        source_buffer_filling_strategy = (
+            BufferFillingStrategy.ADAPTIVE_DROP_OLDEST
+            if not is_file_source
+            else BufferFillingStrategy.WAIT
+        )
+        source_buffer_consumption_strategy = (
+            BufferConsumptionStrategy.EAGER
+            if not is_file_source
+            else BufferConsumptionStrategy.LAZY
+        )
         pipeline_id = used_pipeline_id or self._pipeline_id
-        
+
         # 创建基础的 InMemoryBufferSink
         buffer_sink = InMemoryBufferSink.init(
             queue_size=parsed_payload.sink_configuration.results_buffer_size,
         )
         self._buffer_sink = buffer_sink
-        
+
         # 构建 sinks 列表，默认包含 InMemoryBufferSink
         sinks = [buffer_sink.on_prediction]
-        
-        video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(parsed_payload.processing_configuration.workflows_parameters.get("video_record_sink_configuration", {}))
+
+        video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(
+            parsed_payload.processing_configuration.workflows_parameters.get(
+                "video_record_sink_configuration", {}
+            )
+        )
         # 检查是否启用录像功能
         if video_record_sink_configuration.is_open:
             video_info = None
             if is_file_source:
-                first_video = video_reference[0] if isinstance(video_reference, list) else video_reference
+                first_video = (
+                    video_reference[0]
+                    if isinstance(video_reference, list)
+                    else video_reference
+                )
                 if os.path.exists(first_video):
                     video_info = sv.VideoInfo.from_video_path(first_video)
 
@@ -214,26 +243,30 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
                 queue_size=video_record_sink_configuration.queue_size,
             )
             sinks.append(video_sink.on_prediction)
-        
+
         # 处理 MetricSink（视频指标采集）
-        metrics_cfg = parsed_payload.processing_configuration.workflows_parameters.get("video_mertics_sink_configuration", {})
+        metrics_cfg = parsed_payload.processing_configuration.workflows_parameters.get(
+            "video_mertics_sink_configuration", {}
+        )
         try:
             is_open = bool(metrics_cfg.get("is_open", True))
             selected_fields = metrics_cfg.get("selected_fields") or []
             queue_size = metrics_cfg.get("queue_size", 1000)  # 默认1000
             if is_open:
                 metric_sink = MetricSink.init(
-                    pipeline_id=pipeline_id, 
+                    pipeline_id=pipeline_id,
                     selected_fields=selected_fields,
-                    queue_size=queue_size
+                    queue_size=queue_size,
                 )
                 sinks.append(metric_sink.on_prediction)
-                logger.info(f"MetricSink attached. fields={selected_fields}, queue_size={queue_size}")
+                logger.info(
+                    f"MetricSink attached. fields={selected_fields}, queue_size={queue_size}"
+                )
             else:
                 logger.info("MetricSink disabled by config.")
         except Exception as metric_error:
             logger.warning(f"Failed to configure MetricSink: {metric_error}")
-        
+
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
 
@@ -261,9 +294,7 @@ def initialise_pipeline(self: InferencePipelineManager, request_id: str, payload
         self._consumption_timeout = parsed_payload.consumption_timeout
         self._last_consume_time = time.monotonic()
         self._inference_pipeline.start(use_main_thread=False)
-        self._responses_queue.put(
-            (request_id, {STATUS_KEY: OperationStatus.SUCCESS})
-        )
+        self._responses_queue.put((request_id, {STATUS_KEY: OperationStatus.SUCCESS}))
         logger.info(f"Pipeline initialised with multi_sink. request_id={request_id}...")
     except (
         ValidationError,

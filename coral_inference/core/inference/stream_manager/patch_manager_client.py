@@ -1,17 +1,18 @@
-
 from inference.core.interfaces.stream_manager.api.entities import (
     CommandContext,
-    InitializeWebRTCPipelineResponse
+    InitializeWebRTCPipelineResponse,
 )
 from inference.core.interfaces.stream_manager.manager_app.entities import (
     CommandType,
-    TYPE_KEY, 
-    REQUEST_ID_KEY, 
-    STATUS_KEY, 
-    RESPONSE_KEY, 
+    TYPE_KEY,
+    REQUEST_ID_KEY,
+    STATUS_KEY,
+    RESPONSE_KEY,
     PIPELINE_ID_KEY,
 )
-from inference.core.interfaces.stream_manager.api.stream_manager_client import StreamManagerClient
+from inference.core.interfaces.stream_manager.api.stream_manager_client import (
+    StreamManagerClient,
+)
 
 from coral_inference.core.inference.stream_manager.entities import (
     ExtendCommandType,
@@ -19,7 +20,11 @@ from coral_inference.core.inference.stream_manager.entities import (
 )
 
 
-async def offer(self: StreamManagerClient, pipeline_id: str, offer_request: PatchInitialiseWebRTCPipelinePayload):
+async def offer(
+    self: StreamManagerClient,
+    pipeline_id: str,
+    offer_request: PatchInitialiseWebRTCPipelinePayload,
+):
     command = offer_request.model_dump(exclude_none=True)
     command[TYPE_KEY] = ExtendCommandType.OFFER
     command[PIPELINE_ID_KEY] = pipeline_id

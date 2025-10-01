@@ -138,7 +138,7 @@ class VideoTransformTrack(VideoStreamTrack):
             new_frame.pts = self._processed
             new_frame.time_base = Fraction(1, int(self.fps))
         except Exception as e:
-            logger.error(f'Error setting frame time: {e} {self.fps}')
+            logger.error(f"Error setting frame time: {e} {self.fps}")
             new_frame.pts = self._processed
             new_frame.time_base = Fraction(1, 30)
 

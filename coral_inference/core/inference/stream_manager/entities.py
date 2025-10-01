@@ -4,8 +4,10 @@ from typing import List, Optional
 import supervision as sv
 
 from pydantic import BaseModel, Field
-from inference.core.interfaces.stream_manager.manager_app.entities import WebRTCOffer, WebRTCTURNConfig
-
+from inference.core.interfaces.stream_manager.manager_app.entities import (
+    WebRTCOffer,
+    WebRTCTURNConfig,
+)
 
 
 class PatchInitialiseWebRTCPipelinePayload(BaseModel):
@@ -28,7 +30,9 @@ class VideoRecordSinkConfiguration(BaseModel):
     max_disk_usage: float = 0.8
     max_total_size: int = 10 * 1024 * 1024 * 1024
     image_input_name: Optional[str] = None
-    resolution: int = Field(default=360, ge=1, le=1080, description="视频分辨率，默认360p，最高支持1080p")
+    resolution: int = Field(
+        default=360, ge=1, le=1080, description="视频分辨率，默认360p，最高支持1080p"
+    )
     is_open: bool = Field(default=True, description="是否启用录像功能")
     queue_size: int = Field(default=1000, ge=1, description="异步处理队列大小")
 
@@ -42,4 +46,4 @@ class ExtendCommandType(str, Enum):
     TERMINATE = "terminate"
     LIST_PIPELINES = "list_pipelines"
     CONSUME_RESULT = "consume_result"
-    OFFER = 'offer'
+    OFFER = "offer"

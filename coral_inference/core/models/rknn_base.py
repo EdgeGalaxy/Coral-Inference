@@ -10,7 +10,7 @@ from inference.core.roboflow_api import (
     get_roboflow_model_data,
     get_from_url,
     wrap_roboflow_api_errors,
-    _get_from_url
+    _get_from_url,
 )
 from inference.core.cache.model_artifacts import save_bytes_in_cache
 from inference.core.models.roboflow import OnnxRoboflowInferenceModel
@@ -92,11 +92,11 @@ def extend_download_model_artifacts(
             endpoint_type=ModelEndpointType.ORT,
             device_id=self.device_id,
         )
-        if 'ort' not in api_data:
+        if "ort" not in api_data:
             raise ModelArtefactError(
                 "Could not find `ort` key in roboflow API model description response."
             )
-        api_data = api_data['ort']
+        api_data = api_data["ort"]
 
     if "rknn_model" not in api_data:
         raise ModelArtefactError(

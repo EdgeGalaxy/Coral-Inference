@@ -11,7 +11,11 @@ def remove_app_root_mount(app: FastAPI) -> None:
     for i, route in enumerate(app.routes):
         if isinstance(route, Mount) and route.path == "" and route.name == "root":
             indices_to_remove.append(i)
-        if isinstance(route, Mount) and route.path == "/static" and route.name == "static":
+        if (
+            isinstance(route, Mount)
+            and route.path == "/static"
+            and route.name == "static"
+        ):
             indices_to_remove.append(i)
     for i in sorted(indices_to_remove, reverse=True):
         app.routes.pop(i)
@@ -38,5 +42,3 @@ def remove_existing_inference_pipeline_routes(app: FastAPI) -> None:
 
 def get_monitor(request: Request):
     return request.app.state.monitor
-
-

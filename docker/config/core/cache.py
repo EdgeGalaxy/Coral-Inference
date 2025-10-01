@@ -94,8 +94,9 @@ class PipelineCache(SQLiteWrapper):
             r[self._col_restore_pipeline_id]: {
                 "pipeline_id": r[self._col_pipeline_id],
                 "pipeline_name": r[self._col_pipeline_name],
-                "created_at": r[self._col_created_at]
-            } for r in rows
+                "created_at": r[self._col_created_at],
+            }
+            for r in rows
         }
         return list(pipeline_id_mapper.values())
 
@@ -105,23 +106,25 @@ class PipelineCache(SQLiteWrapper):
             r[self._col_pipeline_id]: {
                 "restore_pipeline_id": r[self._col_restore_pipeline_id],
                 "parameters": json.loads(r[self._col_parameters]),
-                "pipeline_name": r[self._col_pipeline_name]
-            } for r in rows
+                "pipeline_name": r[self._col_pipeline_name],
+            }
+            for r in rows
         }
         if pipeline_id in pipeline_id_mapper:
             return pipeline_id_mapper[pipeline_id]
         else:
             logger.warning(f"Pipeline {pipeline_id} not found in cache")
             return None
-    
-    def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[Dict[str, Any]]:   
+
+    def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
         rows = self.select()
         pipeline_id_mapper = {
             r[self._col_restore_pipeline_id]: {
                 "pipeline_id": r[self._col_pipeline_id],
                 "parameters": json.loads(r[self._col_parameters]),
-                "pipeline_name": r[self._col_pipeline_name]
-            } for r in rows
+                "pipeline_name": r[self._col_pipeline_name],
+            }
+            for r in rows
         }
         return pipeline_id_mapper.get(pipeline_id)
 
@@ -165,7 +168,7 @@ class PipelineCache(SQLiteWrapper):
                 if rows is None
                 else rows
             )
-            
+
             # 只恢复 auto_restart 为 True 的 pipeline
             rows = [r for r in rows if r.get(self._col_auto_restart, True)]
             if len(rows) > 0:
