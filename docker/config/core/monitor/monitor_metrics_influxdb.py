@@ -347,7 +347,6 @@ class InfluxDBMetricsCollector:
                 # 获取 pipeline 状态
                 response = await self.stream_manager_client.get_status(pipeline_id)
                 report = response.report
-                logger.info(f"Pipeline {pipeline_cache_id} 状态报告: {report}")
 
                 # 验证数据有效性
                 if not self.validator.validate_pipeline_report(report):
@@ -403,7 +402,7 @@ class InfluxDBMetricsCollector:
                 )
 
             except Exception as e:
-                logger.error(f"收集 Pipeline {pipeline_cache_id} 指标失败: {e}")
+                logger.exception(f"收集 Pipeline {pipeline_cache_id} 指标失败: {e}")
                 raise
 
     def _create_influxdb_points(
@@ -428,20 +427,20 @@ class InfluxDBMetricsCollector:
             "throughput", int(round(float(inference_throughput)))
         )
         pipeline_point = pipeline_point.field("source_count", len(sources_metadata))
+        pipeline_point = pipeline_point.field("frame_decoding_latency", 0)
+        pipeline_point = pipeline_point.field("inference_latency", 0)
         # 计算 pipeline 级 e2e_latency（取各源最大值，单位 ms）
-        try:
-            e2e_values_ms = []
-            for lr in latency_reports:
-                v = lr.get("e2e_latency")
-                if v is not None:
-                    e2e_values_ms.append(float(v) * 1000.0)
-            if e2e_values_ms:
-                pipeline_point = pipeline_point.field(
-                    "e2e_latency", int(round(max(e2e_values_ms)))
-                )
-        except Exception as _:
-            pass
+        e2e_values_ms = [0.0]
+        for lr in latency_reports:
+            v = lr.get("e2e_latency")
+            if v is not None:
+                e2e_values_ms.append(float(v) * 1000.0)
+        if e2e_values_ms:
+            pipeline_point = pipeline_point.field(
+                "e2e_latency", int(round(max(e2e_values_ms)))
+            )
         pipeline_point = pipeline_point.time(dt)
+        logger.info(f"Pipeline {pipeline_id} 指标点: {pipeline_point} {e2e_values_ms} {latency_reports}")
         points.append(pipeline_point)
 
         # 为每个数据源创建指标点
@@ -475,27 +474,16 @@ class InfluxDBMetricsCollector:
 
             # 设置 Fields（仅写入延迟，单位 ms）
             if latency_data:
-                try:
-                    if latency_data.get("frame_decoding_latency") is not None:
-                        v = float(latency_data["frame_decoding_latency"]) * 1000.0
-                        point = point.field("frame_decoding_latency", int(round(v)))
-                except Exception:
-                    pass
-                try:
-                    if latency_data.get("inference_latency") is not None:
-                        v = float(latency_data["inference_latency"]) * 1000.0
-                        point = point.field("inference_latency", int(round(v)))
-                except Exception:
-                    pass
-                try:
-                    if latency_data.get("e2e_latency") is not None:
-                        v = float(latency_data["e2e_latency"]) * 1000.0
-                        point = point.field("e2e_latency", int(round(v)))
-                except Exception:
-                    pass
+                v = float(latency_data.get("frame_decoding_latency") or  0) * 1000.0
+                point = point.field("frame_decoding_latency", int(round(v)))
+                v = float(latency_data.get("inference_latency") or 0) * 1000.0
+                point = point.field("inference_latency", int(round(v)))
+                v = float(latency_data.get("e2e_latency") or 0) * 1000.0
+                point = point.field("e2e_latency", int(round(v)))
 
             # 设置时间戳
             point = point.time(dt)
+            logger.info(f"Source {source_id} 指标点: {point}")
             points.append(point)
 
         return points
@@ -728,8 +716,8 @@ class InfluxDBMetricsCollector:
         pipeline_id: str,
         start_time: datetime,
         end_time: datetime,
-        aggregation_window: str = "1m",
-        level: str = "source",
+        aggregation_window: str = "10s",
+        level: str = "pipeline",
     ) -> Dict[str, Any]:
         """
         从 InfluxDB 查询指标摘要
@@ -747,218 +735,99 @@ class InfluxDBMetricsCollector:
             logger.warning("InfluxDB 客户端未启用")
             return {}
 
-        try:
-            # 构建 SQL 查询 (InfluxDB3 使用 SQL) - 动态选择已存在的列
-            available = self._get_available_columns()
-            # 通用的时间桶表达式
-            bucket_expr = f"date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket"
-            if level == "pipeline":
-                select_parts = [
-                    bucket_expr,
-                    "AVG(CAST(throughput AS DOUBLE)) as avg_throughput",
-                    "AVG(CAST(source_count AS DOUBLE)) as avg_source_count",
-                ]
-                if "e2e_latency" in available:
-                    select_parts.append(
-                        "AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency"
-                    )
-                select_parts.append("COUNT(*) as data_points")
-                select_clause = ",\n                        ".join(select_parts)
-                query = f"""
-                    SELECT
-                        {select_clause}
-                    FROM {self.measurement}
-                    WHERE
-                        pipeline_id = '{pipeline_id}'
-                        AND time >= TIMESTAMP '{start_time.isoformat()}'
-                        AND time <= TIMESTAMP '{end_time.isoformat()}'
-                    GROUP BY bucket
-                    ORDER BY bucket
-                """
-            else:
-                select_parts = [
-                    bucket_expr,
-                    "source_id",
-                ]
-                if "frame_decoding_latency" in available:
-                    select_parts.append(
-                        "AVG(CAST(frame_decoding_latency AS DOUBLE)) as avg_frame_decoding_latency"
-                    )
-                if "inference_latency" in available:
-                    select_parts.append(
-                        "AVG(CAST(inference_latency AS DOUBLE)) as avg_inference_latency"
-                    )
-                if "e2e_latency" in available:
-                    select_parts.append(
-                        "AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency"
-                    )
-                select_parts.append("COUNT(*) as data_points")
-                select_clause = ",\n                        ".join(select_parts)
-                query = f"""
-                    SELECT 
-                        {select_clause}
-                    FROM {self.measurement}
-                    WHERE 
-                        pipeline_id = '{pipeline_id}'
-                        AND time >= TIMESTAMP '{start_time.isoformat()}'
-                        AND time <= TIMESTAMP '{end_time.isoformat()}'
-                        AND level = 'source'
-                    GROUP BY bucket, source_id
-                    ORDER BY bucket
-                """
+        # 通用的时间桶表达式
+        bucket_expr = f"date_bin(INTERVAL '{aggregation_window}', time, TIMESTAMP '1970-01-01 00:00:00Z') as bucket"
+        if level == "pipeline":
+            select_parts = [
+                bucket_expr,
+                "AVG(CAST(throughput AS DOUBLE)) as avg_throughput",
+                "AVG(CAST(source_count AS DOUBLE)) as avg_source_count",
+                "AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency"
+            ]
+            select_parts.append("COUNT(*) as data_points")
+            select_clause = ",\n                        ".join(select_parts)
+            query = f"""
+                SELECT
+                    {select_clause}
+                FROM {self.measurement}
+                WHERE
+                    pipeline_id = '{pipeline_id}'
+                    AND time >= TIMESTAMP '{start_time.isoformat()}'
+                    AND time <= TIMESTAMP '{end_time.isoformat()}'
+                GROUP BY bucket
+                ORDER BY bucket
+            """
+        else:
+            select_parts = [
+                bucket_expr,
+                "source_id",
+                "AVG(CAST(frame_decoding_latency AS DOUBLE)) as avg_frame_decoding_latency",
+                "AVG(CAST(inference_latency AS DOUBLE)) as avg_inference_latency",
+                "AVG(CAST(e2e_latency AS DOUBLE)) as avg_e2e_latency"
+            ]
+            select_parts.append("COUNT(*) as data_points")
+            select_clause = ",\n                        ".join(select_parts)
+            query = f"""
+                SELECT 
+                    {select_clause}
+                FROM {self.measurement}
+                WHERE 
+                    pipeline_id = '{pipeline_id}'
+                    AND time >= TIMESTAMP '{start_time.isoformat()}'
+                    AND time <= TIMESTAMP '{end_time.isoformat()}'
+                    AND level = 'source'
+                GROUP BY bucket, source_id
+                ORDER BY bucket
+            """
 
-            # 执行查询
-            result = await asyncio.get_event_loop().run_in_executor(
-                self._executor, self._execute_query, query
+        # 执行查询
+        result = await asyncio.get_event_loop().run_in_executor(
+            self._executor, self._execute_query, query
+        )
+
+        # 处理结果
+        summary = {
+            "pipeline_id": pipeline_id,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "aggregation_window": aggregation_window,
+            "data": [],
+        }
+
+        if result:
+            # InfluxDB3 返回 pyarrow 格式的数据
+            import pandas as pd
+
+            df = (
+                result.to_pandas()
+                if hasattr(result, "to_pandas")
+                else pd.DataFrame(result)
             )
-
-            # 处理结果
-            summary = {
-                "pipeline_id": pipeline_id,
-                "start_time": start_time.isoformat(),
-                "end_time": end_time.isoformat(),
-                "aggregation_window": aggregation_window,
-                "data": [],
-            }
-
-            if result:
-                # InfluxDB3 返回 pyarrow 格式的数据
-                try:
-                    import pandas as pd
-
-                    df = (
-                        result.to_pandas()
-                        if hasattr(result, "to_pandas")
-                        else pd.DataFrame(result)
-                    )
-                    for _, row in df.iterrows():
-                        item = {
-                            "time": str(row.get("bucket"))
-                            if row.get("bucket") is not None
-                            else None,
-                            "data_points": int(row.get("data_points"))
-                            if row.get("data_points") is not None
-                            else None,
+            for _, row in df.iterrows():
+                item = {
+                    "time": str(row.get("bucket")),
+                    "data_points": int(row.get("data_points")),
+                }
+                if level == "pipeline":
+                    item.update(
+                        {
+                            "avg_throughput": float(row.get("avg_throughput", 0)),
+                            "avg_source_count": float(row.get("avg_source_count", 0)),
+                            "avg_e2e_latency": float(row.get("avg_e2e_latency", 0))
                         }
-                        if level == "pipeline":
-                            item.update(
-                                {
-                                    "avg_throughput": float(row.get("avg_throughput"))
-                                    if row.get("avg_throughput") is not None
-                                    else None,
-                                    "avg_source_count": float(
-                                        row.get("avg_source_count")
-                                    )
-                                    if row.get("avg_source_count") is not None
-                                    else None,
-                                    "avg_latency_mean": float(
-                                        row.get("avg_latency_mean")
-                                    )
-                                    if row.get("avg_latency_mean") is not None
-                                    else None,
-                                    "total_frames": float(row.get("total_frames"))
-                                    if row.get("total_frames") is not None
-                                    else None,
-                                    "total_dropped": float(row.get("total_dropped"))
-                                    if row.get("total_dropped") is not None
-                                    else None,
-                                }
-                            )
-                        else:
-                            item.update(
-                                {
-                                    "source_id": str(row.get("source_id"))
-                                    if row.get("source_id") is not None
-                                    else None,
-                                    "avg_latency": float(row.get("avg_latency"))
-                                    if row.get("avg_latency") is not None
-                                    else None,
-                                    "avg_fps": float(row.get("avg_fps"))
-                                    if row.get("avg_fps") is not None
-                                    else None,
-                                    "total_frames": float(row.get("total_frames"))
-                                    if row.get("total_frames") is not None
-                                    else None,
-                                    "total_dropped": float(row.get("total_dropped"))
-                                    if row.get("total_dropped") is not None
-                                    else None,
-                                }
-                            )
-                        summary["data"].append(item)
-                except Exception as parse_error:
-                    logger.warning(f"解析查询结果失败: {parse_error}")
-                    # 尝试直接遍历结果
-                    try:
-                        for record in result:
-                            record_dict = (
-                                record.to_dict()
-                                if hasattr(record, "to_dict")
-                                else (
-                                    dict(record) if hasattr(record, "__iter__") else {}
-                                )
-                            )
-                            item = {
-                                "time": str(record_dict.get("bucket"))
-                                if record_dict.get("bucket") is not None
-                                else None,
-                                "data_points": int(record_dict.get("data_points"))
-                                if record_dict.get("data_points") is not None
-                                else None,
-                            }
-                            if level == "pipeline":
-                                item.update(
-                                    {
-                                        "avg_throughput": float(
-                                            record_dict.get("avg_throughput")
-                                        )
-                                        if record_dict.get("avg_throughput") is not None
-                                        else None,
-                                        "avg_source_count": float(
-                                            record_dict.get("avg_source_count")
-                                        )
-                                        if record_dict.get("avg_source_count")
-                                        is not None
-                                        else None,
-                                    }
-                                )
-                            else:
-                                item.update(
-                                    {
-                                        "source_id": str(record_dict.get("source_id"))
-                                        if record_dict.get("source_id") is not None
-                                        else None,
-                                        "avg_latency": float(
-                                            record_dict.get("avg_latency")
-                                        )
-                                        if record_dict.get("avg_latency") is not None
-                                        else None,
-                                        "avg_fps": float(record_dict.get("avg_fps"))
-                                        if record_dict.get("avg_fps") is not None
-                                        else None,
-                                        "total_frames": float(
-                                            record_dict.get("total_frames")
-                                        )
-                                        if record_dict.get("total_frames") is not None
-                                        else None,
-                                        "total_dropped": float(
-                                            record_dict.get("total_dropped")
-                                        )
-                                        if record_dict.get("total_dropped") is not None
-                                        else None,
-                                    }
-                                )
-                            summary["data"].append(item)
-                    except Exception as fallback_error:
-                        logger.error(f"结果处理失败: {fallback_error}")
-                        logger.debug(f"结果类型: {type(result)}")
-                        if hasattr(result, "__dict__"):
-                            logger.debug(f"结果属性: {result.__dict__}")
+                    )
+                else:
+                    item.update(
+                        {
+                            "source_id": str(row.get("source_id")),
+                            "avg_frame_decoding_latency": float(row.get("avg_frame_decoding_latency", 0)),
+                            "avg_inference_latency": float(row.get("avg_inference_latency", 0)),
+                            "avg_e2e_latency": float(row.get("avg_e2e_latency", 0)),
+                        }
+                    )
+                summary["data"].append(item)
 
-            return summary
-
-        except Exception as e:
-            logger.error(f"查询 InfluxDB 失败: {e}")
-            return {}
+        return summary
 
     def _execute_query(self, query: str):
         """同步执行查询（在线程池中运行）"""

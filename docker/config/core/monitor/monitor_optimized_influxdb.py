@@ -780,8 +780,8 @@ class OptimizedPipelineMonitorWithInfluxDB:
         pipeline_id: str,
         start_time: datetime,
         end_time: datetime,
-        aggregation_window: str = "1m",
-        level: str = "source",
+        aggregation_window: str = "10s",
+        level: str = "pipeline",
     ) -> Dict[str, Any]:
         """
         获取指定时间范围的指标摘要

@@ -231,7 +231,7 @@ def register_monitor_routes(app: FastAPI) -> None:
             5, description="最近几分钟的数据，当start_time和end_time为空时使用"
         ),
         level: Optional[str] = Query(
-            "source", description="指标级别：source 或 pipeline"
+            "pipeline", description="指标级别：source 或 pipeline"
         ),
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
     ) -> MetricsResponse:
@@ -249,9 +249,11 @@ def register_monitor_routes(app: FastAPI) -> None:
                     pipeline_id=pipeline_id,
                     start_time=start_dt,
                     end_time=end_dt,
-                    aggregation_window="1m",  # 可以根据时间范围动态调整
-                    level=level or "source",
+                    aggregation_window="10s",  # 可以根据时间范围动态调整
+                    level=level or "pipeline",
                 )
+
+                logger.info('summary', summary)
 
                 # 转换 InfluxDB 数据为前端需要的格式
                 if summary and summary.get("data"):
@@ -261,14 +263,7 @@ def register_monitor_routes(app: FastAPI) -> None:
                     dates = buckets[:]
                     datasets = []
 
-                    # 统计当前有效字段（出现且非 None）
-                    def has_field(field_name: str) -> bool:
-                        for r in rows:
-                            if field_name in r and r.get(field_name) is not None:
-                                return True
-                        return False
-
-                    if (level or "source") == "pipeline":
+                    if (level or "pipeline") == "pipeline":
                         # 期望每个 bucket 有一条记录
                         bucket_map = {r.get("time"): r for r in rows if r.get("time")}
                         throughput_data = [
@@ -281,25 +276,18 @@ def register_monitor_routes(app: FastAPI) -> None:
                             )
                             for ts in dates
                         ]
+                        e2e_latency_data = [
+                            float(bucket_map.get(ts, {}).get("avg_e2e_latency", 0) or 0)
+                            for ts in dates
+                        ]
                         datasets.append({"name": "Throughput", "data": throughput_data})
                         datasets.append(
                             {"name": "Source Count", "data": source_count_data}
                         )
-
-                        if has_field("avg_e2e_latency"):
-                            e2e_latency_data = [
-                                float(
-                                    bucket_map.get(ts, {}).get("avg_e2e_latency", 0)
-                                    or 0
-                                )
-                                for ts in dates
-                            ]
-                            datasets.append(
-                                {"name": "E2E Latency", "data": e2e_latency_data}
-                            )
+                        datasets.append(
+                            {"name": "E2E Latency", "data": e2e_latency_data}
+                        )
                     else:
-                        # source 级别：每个 bucket 可能存在多个 source 条目
-                        # 1) 汇总吞吐量为 sum(avg_fps)
                         rows_by_bucket = {}
                         for r in rows:
                             ts = r.get("time")
@@ -307,9 +295,6 @@ def register_monitor_routes(app: FastAPI) -> None:
                                 continue
                             rows_by_bucket.setdefault(ts, []).append(r)
 
-                        # 源级不再提供 fps，因此不再聚合 Throughput
-
-                        # 2) 按 source_id 构建多组数据
                         sources = sorted(
                             {
                                 str(r.get("source_id"))
@@ -317,7 +302,6 @@ def register_monitor_routes(app: FastAPI) -> None:
                                 if r.get("source_id") is not None
                             }
                         )
-                        # 索引 (bucket, source) -> row
                         idx = {
                             (r.get("time"), str(r.get("source_id"))): r
                             for r in rows
@@ -330,37 +314,31 @@ def register_monitor_routes(app: FastAPI) -> None:
                             e2e_lat = []
                             for ts in dates:
                                 rec = idx.get((ts, sid)) or {}
-                                if has_field("avg_frame_decoding_latency"):
-                                    frame_decoding.append(
-                                        float(
-                                            rec.get("avg_frame_decoding_latency", 0)
-                                            or 0
-                                        )
+                                frame_decoding.append(
+                                    float(
+                                        rec.get("avg_frame_decoding_latency", 0)
+                                        or 0
                                     )
-                                if has_field("avg_inference_latency"):
-                                    inference_lat.append(
-                                        float(rec.get("avg_inference_latency", 0) or 0)
-                                    )
-                                if has_field("avg_e2e_latency"):
-                                    e2e_lat.append(
-                                        float(rec.get("avg_e2e_latency", 0) or 0)
-                                    )
+                                )
+                                inference_lat.append(
+                                    float(rec.get("avg_inference_latency", 0) or 0)
+                                )
+                                e2e_lat.append(
+                                    float(rec.get("avg_e2e_latency", 0) or 0)
+                                )
 
-                            if has_field("avg_frame_decoding_latency"):
                                 datasets.append(
                                     {
                                         "name": f"Frame Decoding ({sid})",
                                         "data": frame_decoding,
                                     }
                                 )
-                            if has_field("avg_inference_latency"):
                                 datasets.append(
                                     {
                                         "name": f"Inference Latency ({sid})",
                                         "data": inference_lat,
                                     }
                                 )
-                            if has_field("avg_e2e_latency"):
                                 datasets.append(
                                     {"name": f"E2E Latency ({sid})", "data": e2e_lat}
                                 )
@@ -504,88 +482,6 @@ def register_monitor_routes(app: FastAPI) -> None:
             return OperationResponse(status="success", message="磁盘清理任务已触发")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"磁盘清理失败: {str(e)}")
-
-    @app.get(
-        "/inference_pipelines/{pipeline_id}/metrics/summary",
-        response_model=MetricsSummaryResponse,
-        summary="获取Pipeline指标摘要（InfluxDB）",
-        description="从InfluxDB获取指定时间范围内的Pipeline指标摘要数据",
-        responses={500: {"model": ErrorResponse, "description": "服务器内部错误"}},
-    )
-    @with_route_exceptions_async
-    async def get_pipeline_metrics_summary(
-        pipeline_id: str,
-        start_time: Optional[float] = Query(None, description="开始时间戳（秒）"),
-        end_time: Optional[float] = Query(None, description="结束时间戳（秒）"),
-        minutes: Optional[int] = Query(
-            30, description="最近几分钟的数据，当start_time和end_time为空时使用"
-        ),
-        aggregation_window: Optional[str] = Query(
-            "1m", description="聚合窗口：1m, 5m, 15m, 1h等"
-        ),
-        monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
-    ) -> MetricsSummaryResponse:
-        try:
-            # 验证参数
-            if start_time is None or end_time is None:
-                end_time = time.time()
-                start_time = end_time - (minutes * 60)
-
-            if start_time >= end_time:
-                raise HTTPException(
-                    status_code=400, detail="start_time must be less than end_time"
-                )
-
-            start_dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
-            end_dt = datetime.fromtimestamp(end_time, tz=timezone.utc)
-
-            summary = await monitor.get_metrics_summary(
-                pipeline_id=pipeline_id,
-                start_time=start_dt,
-                end_time=end_dt,
-                aggregation_window=aggregation_window,
-            )
-
-            # 转换为 Pydantic 模型
-            if summary and isinstance(summary, dict):
-                # 转换数据点
-                data_points = [
-                    MetricDataPoint(
-                        time=point.get("time"),
-                        source_id=point.get("source_id"),
-                        avg_latency=point.get("avg_latency"),
-                        avg_fps=point.get("avg_fps"),
-                        total_frames=point.get("total_frames"),
-                        total_dropped=point.get("total_dropped"),
-                    )
-                    for point in summary.get("data", [])
-                ]
-
-                summary_data = MetricsSummaryData(
-                    pipeline_id=summary.get("pipeline_id", pipeline_id),
-                    start_time=summary.get("start_time", start_dt.isoformat()),
-                    end_time=summary.get("end_time", end_dt.isoformat()),
-                    aggregation_window=summary.get(
-                        "aggregation_window", aggregation_window
-                    ),
-                    data=data_points,
-                )
-            else:
-                # 空响应
-                summary_data = MetricsSummaryData(
-                    pipeline_id=pipeline_id,
-                    start_time=start_dt.isoformat(),
-                    end_time=end_dt.isoformat(),
-                    aggregation_window=aggregation_window,
-                    data=[],
-                )
-
-            return MetricsSummaryResponse(status="success", data=summary_data)
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"获取指标摘要失败: {str(e)}")
 
     @app.get(
         "/monitor/influxdb/status",
