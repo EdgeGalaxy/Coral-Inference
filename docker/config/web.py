@@ -15,7 +15,6 @@ from inference.core.env import (
 from inference.models.utils import ROBOFLOW_MODEL_TYPES
 
 from coral_inference.core import runtime_platform
-from coral_inference.core.managers.patch_pingback import get_influxdb_metrics
 from loguru import logger
 
 from core.route import init_app
@@ -27,7 +26,6 @@ model_manager = ModelManager(model_registry=model_registry)
 
 model_manager = WithFixedSizeCache(model_manager, max_size=MAX_ACTIVE_MODELS)
 model_manager.init_pingback()
-model_manager.pingback.environment_info.update(get_influxdb_metrics())
 interface = HttpInterface(model_manager)
 
 app = interface.app
