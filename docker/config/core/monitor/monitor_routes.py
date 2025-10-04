@@ -10,6 +10,7 @@ from loguru import logger
 
 from inference.core.interfaces.http.http_api import with_route_exceptions_async
 
+from .influxdb_service import influx_client, metrics_processor, InfluxQueryParams
 from .monitor_optimized_influxdb import OptimizedPipelineMonitorWithInfluxDB
 from ..routing_utils import get_monitor
 
@@ -525,3 +526,198 @@ def register_monitor_routes(app: FastAPI) -> None:
             raise HTTPException(
                 status_code=500, detail=f"获取InfluxDB状态失败: {str(e)}"
             )
+
+    # ==================== InfluxDB 查询接口（新增） ====================
+
+    @app.post(
+        "/metrics/query",
+        summary="执行 InfluxDB 查询",
+        description="执行通用的 InfluxDB 查询并返回结果",
+    )
+    @with_route_exceptions_async
+    async def execute_influx_query(
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        执行 InfluxDB 查询
+
+        请求体:
+        {
+            "measurement": "pipeline_system_metrics",
+            "fields": ["throughput", "e2e_latency"],
+            "start_time": "2024-01-01T00:00:00Z",
+            "end_time": "2024-01-02T00:00:00Z",
+            "aggregation": "mean",
+            "group_by": ["source_id"],
+            "group_by_time": "5m",
+            "tag_filters": {"pipeline_id": "abc123"}
+        }
+        """
+        try:
+            query = influx_client.build_query(
+                measurement=payload["measurement"],
+                fields=payload["fields"],
+                start_time=datetime.fromisoformat(payload["start_time"])
+                if payload.get("start_time")
+                else None,
+                end_time=datetime.fromisoformat(payload["end_time"])
+                if payload.get("end_time")
+                else None,
+                aggregation=payload.get("aggregation", "mean"),
+                group_by=payload.get("group_by"),
+                group_by_time=payload.get("group_by_time", "5m"),
+                tag_filters=payload.get("tag_filters"),
+            )
+
+            # 执行查询
+            params = InfluxQueryParams(db=influx_client.database, q=query)
+            resp = await influx_client.query(params, payload.get("group_by", []))
+
+            # 转换为字典格式返回
+            return {
+                "results": [
+                    {
+                        "series": [
+                            {
+                                "name": s.name,
+                                "columns": s.columns,
+                                "values": s.values,
+                                "tags": s.tags or {},
+                            }
+                            for s in (resp.results[0].series or [])
+                        ]
+                        if resp.results
+                        else [],
+                        "messages": resp.results[0].messages if resp.results else [],
+                        "partial": resp.results[0].partial if resp.results else False,
+                    }
+                ],
+                "error": resp.error,
+            }
+
+        except Exception as e:
+            logger.exception(f"Execute query failed: {e}")
+            raise HTTPException(status_code=500, detail=f"执行查询失败: {str(e)}")
+
+    @app.get(
+        "/metrics/fields",
+        summary="获取指标字段列表",
+        description="获取指定 measurement 的所有字段",
+    )
+    @with_route_exceptions_async
+    async def get_metrics_fields(
+        measurement: str = Query(..., description="Measurement 名称"),
+    ) -> List[Dict[str, Any]]:
+        """获取字段列表 (SHOW FIELD KEYS)"""
+        try:
+
+            fields = await metrics_processor.get_available_metrics_via_influx(
+                influx_client, measurement
+            )
+            return fields
+
+        except Exception as e:
+            logger.exception(f"Get fields failed: {e}")
+            raise HTTPException(status_code=500, detail=f"获取字段失败: {str(e)}")
+
+    @app.get(
+        "/metrics/tag-keys",
+        summary="获取标签键列表",
+        description="获取指定 measurement 的所有标签键",
+    )
+    @with_route_exceptions_async
+    async def get_metrics_tag_keys(
+        measurement: str = Query(..., description="Measurement 名称"),
+    ) -> List[str]:
+        """获取标签键列表 (SHOW TAG KEYS)"""
+        try:
+            keys = await metrics_processor.get_tag_keys_via_influx(influx_client, measurement)
+            return keys
+
+        except Exception as e:
+            logger.exception(f"Get tag keys failed: {e}")
+            raise HTTPException(status_code=500, detail=f"获取标签键失败: {str(e)}")
+
+    @app.get(
+        "/metrics/tag-values",
+        summary="获取标签值列表",
+        description="获取指定标签的所有可能值",
+    )
+    @with_route_exceptions_async
+    async def get_metrics_tag_values(
+        measurement: str = Query(..., description="Measurement 名称"),
+        tag: str = Query(..., description="标签名"),
+    ) -> List[str]:
+        """获取标签值列表 (SHOW TAG VALUES)"""
+        try:
+            values = await metrics_processor.get_tag_values_via_influx(
+                influx_client, measurement, tag
+            )
+            return values
+
+        except Exception as e:
+            logger.exception(f"Get tag values failed: {e}")
+            raise HTTPException(status_code=500, detail=f"获取标签值失败: {str(e)}")
+
+    @app.post(
+        "/metrics/chart-data",
+        summary="获取图表数据",
+        description="查询并转换为图表格式的数据",
+    )
+    @with_route_exceptions_async
+    async def get_metrics_chart_data(
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        获取图表数据
+
+        请求体格式同 /metrics/query
+        """
+        try:
+            # 构建查询
+            query = influx_client.build_query(
+                measurement=payload["measurement"],
+                fields=payload["fields"],
+                start_time=datetime.fromisoformat(payload["start_time"])
+                if payload.get("start_time")
+                else None,
+                end_time=datetime.fromisoformat(payload["end_time"])
+                if payload.get("end_time")
+                else None,
+                aggregation=payload.get("aggregation", "mean"),
+                group_by=payload.get("group_by"),
+                group_by_time=payload.get("group_by_time", "5m"),
+                tag_filters=payload.get("tag_filters"),
+            )
+
+            # 执行查询
+            params = InfluxQueryParams(db=influx_client.database, q=query)
+            resp = await influx_client.query(params, payload.get("group_by", []))
+
+            # 转换为图表数据
+            chart_data = metrics_processor.convert_to_chart_data(
+                resp, payload["fields"], payload.get("group_by", [])
+            )
+
+            # 序列化 series 结构
+            series = []
+            if resp.results and resp.results[0].series:
+                for s in resp.results[0].series:
+                    series.append(
+                        {
+                            "name": s.name,
+                            "tags": s.tags_metadata or {},
+                            "columns": s.columns,
+                            "values": s.values,
+                        }
+                    )
+
+            return {
+                "executed_query": query,
+                "series": series,
+                "chart_data": chart_data,
+            }
+
+        except Exception as e:
+            logger.exception(f"Get chart data failed: {e}")
+            raise HTTPException(status_code=500, detail=f"获取图表数据失败: {str(e)}")
