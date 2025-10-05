@@ -289,7 +289,7 @@ class InfluxDBClient:
         end_time: Optional[datetime] = None,
         aggregation: Union[AggregationType, str] = AggregationType.MEAN,
         group_by: Optional[List[str]] = None,
-        group_by_time: str = "5m",
+        group_by_time: str = "5s",
         tag_filters: Optional[Dict[str, str]] = None,
     ) -> str:
         """构建查询语句（SQL for InfluxDB 3）"""

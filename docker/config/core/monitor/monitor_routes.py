@@ -565,7 +565,7 @@ def register_monitor_routes(app: FastAPI) -> None:
                 else None,
                 aggregation=payload.get("aggregation", "mean"),
                 group_by=payload.get("group_by"),
-                group_by_time=payload.get("group_by_time", "5m"),
+                group_by_time=payload.get("group_by_time", "5s"),
                 tag_filters=payload.get("tag_filters"),
             )
 
@@ -686,7 +686,7 @@ def register_monitor_routes(app: FastAPI) -> None:
                 else None,
                 aggregation=payload.get("aggregation", "mean"),
                 group_by=payload.get("group_by"),
-                group_by_time=payload.get("group_by_time", "5m"),
+                group_by_time=payload.get("group_by_time", "5s"),
                 tag_filters=payload.get("tag_filters"),
             )
 

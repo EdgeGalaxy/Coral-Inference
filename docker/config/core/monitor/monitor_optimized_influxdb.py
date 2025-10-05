@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 import aiofiles
 
 from loguru import logger
-from influxdb_client_3 import InfluxDBClient3, Point
 
 from inference.core.interfaces.stream_manager.api.stream_manager_client import (
     StreamManagerClient,
@@ -626,10 +625,10 @@ class OptimizedPipelineMonitorWithInfluxDB:
 
                 # 构建并发任务列表
                 tasks = [
-                    # 结果收集
-                    self.results_collector.poll_and_save_results_concurrent(
-                        pipeline_ids_mapper
-                    ),
+                    # # 结果收集
+                    # self.results_collector.poll_and_save_results_concurrent(
+                    #     pipeline_ids_mapper
+                    # ),
                     # 清理管理
                     self.cleanup_manager.check_and_cleanup_async(),
                 ]
