@@ -1,8 +1,8 @@
 import asyncio
 import os
 
+from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
 from inference.core.interfaces.http.http_api import HttpInterface
-from inference.core.env import MODEL_CACHE_DIR
 from inference.core.managers.base import ModelManager
 from inference.core.managers.decorators.fixed_size_cache import WithFixedSizeCache
 from inference.core.registries.roboflow import (
@@ -26,6 +26,7 @@ model_manager = ModelManager(model_registry=model_registry)
 
 model_manager = WithFixedSizeCache(model_manager, max_size=MAX_ACTIVE_MODELS)
 model_manager.init_pingback()
+model_manager.pingback.environment_info.update({'run_env': CURRENT_INFERENCE_PLATFORM})
 interface = HttpInterface(model_manager)
 
 app = interface.app
