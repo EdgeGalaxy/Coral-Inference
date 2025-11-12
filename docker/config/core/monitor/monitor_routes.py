@@ -11,6 +11,7 @@ from loguru import logger
 from inference.core.interfaces.http.http_api import with_route_exceptions_async
 
 from .influxdb_service import influx_client, metrics_processor, InfluxQueryParams
+from .custom_metrics_routes import register_custom_metrics_routes
 from .monitor_optimized_influxdb import OptimizedPipelineMonitorWithInfluxDB
 from ..routing_utils import get_monitor
 
@@ -598,6 +599,9 @@ def register_monitor_routes(app: FastAPI) -> None:
         except Exception as e:
             logger.exception(f"Execute query failed: {e}")
             raise HTTPException(status_code=500, detail=f"执行查询失败: {str(e)}")
+
+    # 注册自定义指标相关路由
+    register_custom_metrics_routes(app)
 
     @app.get(
         "/metrics/fields",

@@ -101,6 +101,53 @@ export interface PipelineInfoResponse {
   }
 }
 
+// 自定义指标类型
+export type ChartType = 'line' | 'area' | 'bar' | 'pie'
+
+export interface CustomMetricPayload {
+  name: string
+  chart_type: ChartType
+  measurement: string
+  fields: string[]
+  aggregation?: string | null
+  group_by?: string[] | null
+  group_by_time?: string | null
+  tag_filters?: Record<string, string> | null
+  description?: string | null
+  time_range_seconds?: number | null
+  refresh_interval_seconds?: number | null
+}
+
+export interface CustomMetric extends CustomMetricPayload {
+  id: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CustomMetricChartPoint {
+  timestamp: string | number | Date
+  value: number
+  label?: string
+  tags?: Record<string, string>
+  metadata?: Record<string, any>
+}
+
+export interface CustomMetricChartResponse {
+  metric: CustomMetric
+  executed_query: string
+  time_window: {
+    start: string
+    end: string
+  }
+  series: Array<{
+    name: string
+    columns: string[]
+    values: any[][]
+    tags?: Record<string, string>
+  }>
+  chart_data: CustomMetricChartPoint[]
+}
+
 // API错误处理
 export class ApiError extends Error {
   constructor(
@@ -458,6 +505,48 @@ export const monitorApi = {
       console.error('获取InfluxDB状态失败:', error)
       throw error
     }
+  },
+}
+
+// 自定义指标 API
+export const customMetricsApi = {
+  async list(): Promise<CustomMetric[]> {
+    return apiRequest<CustomMetric[]>('/custom-metrics')
+  },
+
+  async create(payload: CustomMetricPayload): Promise<CustomMetric> {
+    return apiRequest<CustomMetric>('/custom-metrics', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async get(metricId: number): Promise<CustomMetric> {
+    return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`)
+  },
+
+  async update(metricId: number, payload: CustomMetricPayload): Promise<CustomMetric> {
+    return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async remove(metricId: number): Promise<void> {
+    await apiRequest(`/custom-metrics/${metricId}`, { method: 'DELETE' })
+  },
+
+  async fetchChartData(
+    metricId: number,
+    params: { minutes?: number; start_time?: number; end_time?: number } = {}
+  ): Promise<CustomMetricChartResponse> {
+    return apiRequest<CustomMetricChartResponse>(
+      `/custom-metrics/${metricId}/chart-data`,
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    )
   },
 }
 

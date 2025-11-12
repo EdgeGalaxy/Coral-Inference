@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PipelineSelector } from '@/components/pipeline-selector'
@@ -31,15 +32,20 @@ export default function Home() {
               </div>
             </div>
             
-            {selectedPipeline && (
-              <Button
-                onClick={() => setShowMetrics(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-              >
-                <BarChart className="h-4 w-4 mr-2" />
-                查看指标
+            <div className="flex items-center gap-3">
+              <Button asChild variant="outline">
+                <Link href="/custom-metrics">自定义指标</Link>
               </Button>
-            )}
+              {selectedPipeline && (
+                <Button
+                  onClick={() => setShowMetrics(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+                >
+                  <BarChart className="h-4 w-4 mr-2" />
+                  查看指标
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </header>
