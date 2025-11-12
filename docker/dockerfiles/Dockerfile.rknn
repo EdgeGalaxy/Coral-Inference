@@ -9,7 +9,9 @@ ENV RKNN_VERSION=${RKNN_VERSION}
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo 'Asia/Shanghai' > /etc/timezone
 
-RUN apt-get update -y \
+RUN apt-get clean \ 
+    && rm -rf /var/lib/apt/lists/ \
+    && apt-get update -y \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
