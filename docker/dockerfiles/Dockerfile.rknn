@@ -54,7 +54,7 @@ WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 
 # Copy RKNN files from source stage
-COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp310-*.whl /tmp/
+COPY --from=source /rknn-toolkit2/rknn-toolkit-lite2/packages/rknn_toolkit_lite2-*-cp311-*.whl /tmp/
 
 # 安装 Python 依赖
 RUN poetry install --no-root --only=main \
@@ -101,7 +101,7 @@ COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/include/* /us
 COPY --from=source /rknn-toolkit2/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so /usr/lib/
 
 # Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.10/dist-packages/ /usr/local/lib/python3.10/dist-packages/
+COPY --from=builder /usr/local/lib/python3.11/dist-packages/ /usr/local/lib/python3.11/dist-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # 从构建阶段复制构建的 wheel 包并安装
