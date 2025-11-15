@@ -1,9 +1,10 @@
 import asyncio
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 
@@ -11,8 +12,15 @@ from inference.core.interfaces.stream_manager.api.stream_manager_client import (
     StreamManagerClient,
 )
 from inference.core.env import MODEL_CACHE_DIR
+from coral_inference.webapp import load_webapp_config
+from coral_inference.webapp.services import HealthService
+from coral_inference.runtime import get_current_context
 
 from .cache import PipelineCache
+from .pipeline.pipeline_utils import (
+    download_videos_parallel,
+    cleanup_pipeline_videos,
+)
 from .routing_utils import (
     remove_app_root_mount,
     remove_existing_inference_pipeline_routes,
@@ -21,6 +29,7 @@ from .stream.video_stream_routes import register_video_stream_routes
 from .pipeline.pipeline_routes import register_pipeline_routes
 from .monitor.monitor_routes import register_monitor_routes
 from .monitor.monitor_optimized_influxdb import setup_optimized_monitor_with_influxdb
+from coral_inference.webapp import PipelineService, StreamService, MonitorService
 
 
 def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
@@ -28,6 +37,61 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
     remove_existing_inference_pipeline_routes(app)
 
     pipeline_cache = PipelineCache(stream_manager_client=stream_manager_client)
+    runtime_context = get_current_context()
+    services_config = {}
+    if runtime_context and runtime_context.config and runtime_context.config.services:
+        services_config = runtime_context.config.services.get("webapp", {}) or {}
+    webapp_config = load_webapp_config(config_data=services_config)
+    app.state.webapp_config = webapp_config
+    health_service = HealthService()
+    app.state.health_service = health_service
+    pipeline_service = PipelineService(
+        stream_manager_client,
+        cache_create=pipeline_cache.create,
+        cache_terminate=pipeline_cache.terminate,
+        pipeline_cache=pipeline_cache,
+        video_downloader=download_videos_parallel,
+        video_cleanup=cleanup_pipeline_videos,
+    )
+    stream_service = StreamService(stream_manager_client)
+    app.state.pipeline_service = pipeline_service
+    app.state.stream_service = stream_service
+    try:
+        health_service.register_check("stream_manager", stream_service.health)
+        health_service.register_check(
+            "pipeline_cache",
+            lambda: (True, {"cached": len(pipeline_service.cached())}),
+        )
+    except Exception:
+        logger.exception("failed to register base health checks")
+
+    @app.get("/config.json")
+    async def get_webapp_config():
+        return JSONResponse(webapp_config.to_dict())
+
+    @app.get("/healthz")
+    async def healthz():
+        status = await health_service.liveness()
+        return JSONResponse(
+            {
+                "status": "ok" if status.healthy else "error",
+                "checks": status.details.get("checks", {}),
+                "timestamp": status.details.get("timestamp"),
+            },
+            status_code=200 if status.healthy else 503,
+        )
+
+    @app.get("/readyz")
+    async def readyz():
+        status = await health_service.readiness()
+        return JSONResponse(
+            {
+                "status": "ok" if status.healthy else "error",
+                "checks": status.details.get("checks", {}),
+                "timestamp": status.details.get("timestamp"),
+            },
+            status_code=200 if status.healthy else 503,
+        )
 
     @app.on_event("startup")
     async def delayed_restore():
@@ -117,6 +181,14 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         )
 
         app.state.monitor = monitor
+        app.state.monitor_service = MonitorService(monitor)
+        try:
+            health_service.register_check(
+                "monitor",
+                app.state.monitor_service.health,
+            )
+        except Exception:
+            pass
 
     @app.on_event("shutdown")
     async def shutdown_event():

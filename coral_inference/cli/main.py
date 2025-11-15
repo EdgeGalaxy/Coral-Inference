@@ -4,8 +4,10 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
+from importlib import import_module
 from typing import Dict, Iterable, Optional
 
+import uvicorn
 from coral_inference.config import RuntimeDescriptor
 from coral_inference.runtime import RuntimeConfig, init as runtime_init
 from coral_inference.runtime import plugins as runtime_plugins
@@ -44,6 +46,32 @@ def _create_parser() -> argparse.ArgumentParser:
         help="Show plugins for a single group",
     )
 
+    web_parser = subparsers.add_parser("web", help="Web server utilities")
+    web_sub = web_parser.add_subparsers(dest="web_command", required=True)
+    serve_parser = web_sub.add_parser("serve", help="Start the FastAPI web server")
+    _add_descriptor_args(serve_parser)
+    serve_parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host interface to bind (default: 0.0.0.0)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=9001,
+        help="Port to bind (default: 9001)",
+    )
+    serve_parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable uvicorn reload (development only)",
+    )
+    serve_parser.add_argument(
+        "--app",
+        default="docker.config.web:app",
+        help="ASGI application path in MODULE:ATTR format (default: docker.config.web:app)",
+    )
+
     return parser
 
 
@@ -74,6 +102,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _handle_init(args)
     if args.command == "plugins" and args.plugins_command == "list":
         return _handle_plugins_list(args)
+    if args.command == "web" and args.web_command == "serve":
+        return _handle_web_serve(args)
     raise ValueError("Unknown command")
 
 
@@ -112,6 +142,15 @@ def _handle_init(args: argparse.Namespace) -> int:
 def _handle_plugins_list(args: argparse.Namespace) -> int:
     info = runtime_plugins.list_all_plugins(group=args.group)
     _print_json(info)
+    return 0
+
+
+def _handle_web_serve(args: argparse.Namespace) -> int:
+    descriptor = _build_descriptor_from_args(args)
+    runtime_config = descriptor.to_runtime_config(RuntimeConfig())
+    runtime_init(runtime_config)
+    app = _resolve_asgi_app(args.app)
+    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
     return 0
 
 
@@ -161,6 +200,19 @@ def _get_parsed_overrides(args: argparse.Namespace) -> Dict[str, str]:
 
 def _print_json(payload) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _resolve_asgi_app(path: str):
+    if ":" not in path:
+        raise ValueError(
+            f"Invalid ASGI path '{path}', expected format 'module:attr'",
+        )
+    module_name, attr_name = path.split(":", 1)
+    module = import_module(module_name)
+    try:
+        return getattr(module, attr_name)
+    except AttributeError as exc:  # pragma: no cover - invalid attr
+        raise ValueError(f"Module '{module_name}' has no attribute '{attr_name}'") from exc
 
 
 if __name__ == "__main__":  # pragma: no cover

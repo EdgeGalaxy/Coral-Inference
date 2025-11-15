@@ -127,3 +127,26 @@ def register_camera_patch():
 当 `RuntimeConfig.enable_plugins=True` 时，Runtime 会发现并执行这些插件，执行结果记录在 `RuntimeContext.state.plugins_loaded` 以及 `coral-runtime init` 输出中。通过 `coral-runtime plugins list` 可查看当前环境可用的插件及其版本声明。
 
 > 详细的插件发布流程与 checklist 见 `PLUGIN_PUBLISHING.md`。
+
+## WebApp 重构进展
+
+- `RuntimeDescriptor.services.webapp` 现可注入前端所需的 `WebAppConfig`。FastAPI 在 `docker/config/core/route.py` 中通过 `load_webapp_config` 聚合 descriptor/YAML/env 后，向 `/config.json` 以及 `app.state.webapp_config` 注入同一份配置，供 Next.js 仪表盘消费。
+- `docker/config/inference/landing` 引入 `ConfigProvider`（负责加载 `/config.json` 并回填 `window.__CORAL_CONFIG__`）、`QueryProvider`（React Query）以及 `useApiBaseUrl`/`usePipelinesWithStatus` 等 hooks。`PipelineSelector` 已迁移到 React Query 数据流，并遵守 `WebAppConfig.features`。
+- 若要在自定义 descriptor 中声明前端配置，可在 `services` 区域添加：
+  ```yaml
+  services:
+    webapp:
+      app:
+        name: "Coral Runtime"
+        tagline: "Realtime pipelines"
+      api:
+        baseUrl: "https://runtime.example.com"
+      features:
+        recordings:
+          enabled: false
+  ```
+  完整 schema 见 `WEBAPP_CONFIG_CONTRACT.md`。
+- CLI 已支持 `coral-runtime web serve -c examples/runtime_web.yaml --host 0.0.0.0 --port 9001`（可传 `--app MODULE:ATTR` 指向自定义 FastAPI ASGI 对象）。`examples/runtime_web.yaml` 展示了一个最小的 `services.webapp` 配置，便于 Docker/裸机部署直接引用。
+- Docker 镜像中 `entrypoint.sh` 默认仍使用 legacy `uvicorn web:app`，可通过 `WEBAPP_START_MODE=cli` + `WEBAPP_DESCRIPTOR=/app/runtime_web.yaml` 切换至 CLI 模式：此时 supervisor 会执行 `coral-runtime web serve ...`，同时沿用 `HOST/PORT` 环境变量。若 descriptor 缺失脚本会直接报错，可自行挂载/生成。
+
+后续阶段会继续根据 `WEBAPP_FRONTEND_ROADMAP.md` / `WEBAPP_ROADMAP.md` 推进插件入口、CLI 集成与 CI 验收，请在提交对应成果时同步更新两份表格的“状态”列。

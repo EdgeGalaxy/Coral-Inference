@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,27 +8,66 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input'
 import { pipelineApi, apiUtils } from '@/lib/api'
 import { Play, Square, Video, AlertCircle, Loader2, Wifi, WifiOff, Settings } from 'lucide-react'
+import { useConfig } from '@/providers/config-provider'
+import { usePipelineInfo } from '@/features/pipelines/hooks'
+import { useApiBaseUrl } from '@/hooks/use-api-base-url'
 
 interface VideoStreamProps {
   pipelineId: string | null
 }
 
 export function VideoStream({ pipelineId }: VideoStreamProps) {
+  const { config } = useConfig()
+  const apiBaseUrl = useApiBaseUrl()
+  const { data: pipelineInfo, isFetching: isPipelineInfoFetching } = usePipelineInfo(pipelineId)
   const [isStreaming, setIsStreaming] = useState(false)
   const [connectionState, setConnectionState] = useState<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [outputFields, setOutputFields] = useState<string[]>([])
   const [selectedOutputField, setSelectedOutputField] = useState<string>('source_image')
-  const [loadingFields, setLoadingFields] = useState(false)
-  const [webFps, setWebFps] = useState<number>(0)
+  const [webFps, setWebFps] = useState<number>(config.streams?.defaultFps ?? 0)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
 
+  useEffect(() => {
+    setWebFps(config.streams?.defaultFps ?? 0)
+  }, [config.streams?.defaultFps])
+
+  useEffect(() => {
+    if (!pipelineId) {
+      setOutputFields([])
+      setSelectedOutputField('source_image')
+      return
+    }
+    const fields = pipelineInfo?.data?.parameters?.output_image_fields || []
+    const normalized = ['source_image', ...fields.filter((field: string) => field !== 'source_image')]
+    setOutputFields(normalized)
+    if (!normalized.includes(selectedOutputField)) {
+      setSelectedOutputField('source_image')
+    }
+  }, [pipelineId, pipelineInfo, selectedOutputField])
+
+  const loadingFields = isPipelineInfoFetching && !pipelineInfo
+
+  const iceServers = useMemo<RTCIceServer[]>(() => {
+    if (config.streams?.iceServers && config.streams.iceServers.length > 0) {
+      return config.streams.iceServers.map((server) => ({
+        urls: server.urls,
+        username: server.username,
+        credential: server.credential,
+      }))
+    }
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ]
+  }, [config.streams])
+
   // 清理连接
-  const cleanupConnection = () => {
+  const cleanupConnection = useCallback(() => {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
@@ -45,41 +84,15 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
     
     setConnectionState('disconnected')
     setIsStreaming(false)
-  }
-
-  // 获取Pipeline输出字段信息
-  useEffect(() => {
-    const fetchPipelineInfo = async () => {
-      if (!pipelineId) {
-        setOutputFields([])
-        setSelectedOutputField('source_image')
-        return
-      }
-
-      try {
-        setLoadingFields(true)
-        const response = await pipelineApi.getInfo(pipelineId)
-        const fields = response.data.parameters.output_image_fields || []
-        
-        // 确保有source_image选项
-        const allFields = ['source_image', ...fields.filter(field => field !== 'source_image')]
-        setOutputFields(allFields)
-        setSelectedOutputField('source_image')
-      } catch (error) {
-        console.error('获取Pipeline信息失败:', error)
-        setOutputFields(['source_image'])
-        setSelectedOutputField('source_image')
-      } finally {
-        setLoadingFields(false)
-      }
-    }
-
-    fetchPipelineInfo()
-  }, [pipelineId])
+  }, [])
 
   // 创建WebRTC连接
-  const createWebRTCConnection = async () => {
+  const createWebRTCConnection = useCallback(async () => {
     try {
+      if (!pipelineId) {
+        throw new Error('Pipeline ID为空')
+      }
+
       setLoading(true)
       setError(null)
       setConnectionState('connecting')
@@ -88,10 +101,7 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
       
       // 创建RTCPeerConnection
       const peerConnection = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+        iceServers,
       })
       
       peerConnectionRef.current = peerConnection
@@ -141,11 +151,6 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
       
       console.log('本地SDP Offer:', offer)
       
-      // 发送offer到后端
-      if (!pipelineId) {
-        throw new Error('Pipeline ID为空')
-      }
-      
       // 构建请求参数
       const offerRequest: any = {
         webrtc_offer: {
@@ -166,7 +171,7 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
       
       console.log('发送的offer请求:', offerRequest)
       
-      const response = await pipelineApi.createWebRTCOffer(pipelineId, offerRequest)
+      const response = await pipelineApi.createWebRTCOffer(pipelineId, offerRequest, apiBaseUrl)
       
       console.log('收到后端SDP Answer:', response)
       
@@ -186,38 +191,33 @@ export function VideoStream({ pipelineId }: VideoStreamProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiBaseUrl, cleanupConnection, iceServers, pipelineId, selectedOutputField, webFps])
 
   // 开始流传输
-  const handleStartStream = async () => {
+  const handleStartStream = useCallback(async () => {
     if (!pipelineId) {
       setError('请先选择一个Pipeline')
       return
     }
-    
     await createWebRTCConnection()
-  }
+  }, [createWebRTCConnection, pipelineId])
 
   // 停止流传输
-  const handleStopStream = () => {
+  const handleStopStream = useCallback(() => {
     console.log('停止视频流')
     cleanupConnection()
     setError(null)
-  }
+  }, [cleanupConnection])
 
   // 清理资源
-  useEffect(() => {
-    return () => {
-      cleanupConnection()
-    }
-  }, [])
+  useEffect(() => cleanupConnection, [cleanupConnection])
 
   // 当pipelineId变化时停止当前流
   useEffect(() => {
     if (isStreaming) {
       handleStopStream()
     }
-  }, [pipelineId])
+  }, [pipelineId, isStreaming, handleStopStream])
 
   const getConnectionStatusColor = () => {
     switch (connectionState) {

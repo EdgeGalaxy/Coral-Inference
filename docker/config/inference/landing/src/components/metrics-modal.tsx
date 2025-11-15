@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { RefreshCw, TrendingUp, Activity, Clock, AlertCircle, Zap, Timer, BarChart3 } from 'lucide-react'
-import { pipelineApi, apiUtils, monitorApi, MetricsResponse } from '@/lib/api'
+import { apiUtils, type MetricsResponse } from '@/lib/api'
+import { usePipelineMetrics, useInfluxStatus } from '@/features/monitoring/hooks'
 
 interface MetricsModalProps {
   isOpen: boolean
@@ -23,88 +24,25 @@ interface MetricsModalProps {
 }
 
 export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [metricsData, setMetricsData] = useState<MetricsResponse | null>(null)
   const [timeRange, setTimeRange] = useState<string>('5')
-  const [refreshing, setRefreshing] = useState(false)
-  const [influxDBStatus, setInfluxDBStatus] = useState<any>(null)
-  const [useInfluxDB, setUseInfluxDB] = useState(true)
+  const minutes = parseInt(timeRange, 10)
+  const influxStatusQuery = useInfluxStatus(isOpen)
+  const influxDBStatus = influxStatusQuery.data
+  const useInfluxDB = Boolean(influxDBStatus?.enabled && influxDBStatus?.connected)
+  const metricsQuery = usePipelineMetrics(pipelineId, minutes, {
+    enabled: isOpen && Boolean(pipelineId),
+  })
+  const metricsData = metricsQuery.data ?? null
+  const loading = metricsQuery.isLoading
+  const refreshing = metricsQuery.isFetching && !metricsQuery.isLoading
+  const errorMessage = metricsQuery.error ? apiUtils.formatError(metricsQuery.error) : null
+  const flushMutation = useFlushMonitorCache()
+  const cleanupMutation = useTriggerMonitorCleanup()
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
 
-  // 检查InfluxDB状态
-  const checkInfluxDBStatus = async () => {
-    try {
-      const status = await monitorApi.getInfluxDBStatus()
-      setInfluxDBStatus(status)
-      setUseInfluxDB(status.enabled && status.connected)
-      console.log('InfluxDB状态:', status)
-    } catch (error) {
-      console.error('获取InfluxDB状态失败:', error)
-      setUseInfluxDB(false)
-    }
-  }
-
-  // 获取指标数据
-  const fetchMetrics = async () => {
-    if (!pipelineId) return
-
-    try {
-      setLoading(true)
-      setError(null)
-      
-      console.log(`正在获取Pipeline ${pipelineId} 的指标数据...`)
-      
-      const minutes = parseInt(timeRange)
-      
-      let response: MetricsResponse
-      
-      if (useInfluxDB && influxDBStatus?.connected) {
-        // 尝试使用InfluxDB获取数据
-        try {
-          console.log('使用InfluxDB获取指标数据')
-          response = await pipelineApi.getMetrics(pipelineId, { minutes })
-        } catch (influxError) {
-          console.warn('InfluxDB获取失败，降级使用文件数据:', influxError)
-          // 如果InfluxDB失败，降级使用原始接口
-          response = await pipelineApi.getMetrics(pipelineId, { minutes })
-        }
-      } else {
-        // 使用原始接口获取数据
-        console.log('使用文件系统获取指标数据')
-        response = await pipelineApi.getMetrics(pipelineId, { minutes })
-      }
-      
-      console.log('获取到指标数据:', response)
-      setMetricsData(response)
-      
-    } catch (error) {
-      console.error('获取指标数据失败:', error)
-      setError(apiUtils.formatError(error))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 刷新数据
   const handleRefresh = async () => {
-    setRefreshing(true)
-    await fetchMetrics()
-    setRefreshing(false)
+    await Promise.all([metricsQuery.refetch(), influxStatusQuery.refetch()])
   }
-
-  // 当弹窗打开时检查InfluxDB状态
-  useEffect(() => {
-    if (isOpen) {
-      checkInfluxDBStatus()
-    }
-  }, [isOpen])
-
-  // 当弹窗打开或pipelineId变化时获取数据
-  useEffect(() => {
-    if (isOpen && pipelineId && influxDBStatus !== null) {
-      fetchMetrics()
-    }
-  }, [isOpen, pipelineId, timeRange, influxDBStatus])
 
   // 转换指标数据为图表格式
   const convertToChartData = (data: MetricsResponse) => {
@@ -242,12 +180,27 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
     return null
   }
 
-  const chartData = metricsData ? convertToChartData(metricsData) : []
-  const latencyDatasets = metricsData ? getLatencyDatasets(metricsData) : []
-  const throughputDatasets = metricsData ? getThroughputDatasets(metricsData) : []
-  const stateDatasets = metricsData ? getStateDatasets(metricsData) : []
-  const otherNumericDatasets = metricsData ? getOtherNumericDatasets(metricsData) : []
-  const stateChartData = metricsData ? convertStateDataToTimeline(metricsData, stateDatasets) : []
+  const chartData = useMemo(() => (metricsData ? convertToChartData(metricsData) : []), [metricsData])
+  const latencyDatasets = useMemo(
+    () => (metricsData ? getLatencyDatasets(metricsData) : []),
+    [metricsData],
+  )
+  const throughputDatasets = useMemo(
+    () => (metricsData ? getThroughputDatasets(metricsData) : []),
+    [metricsData],
+  )
+  const stateDatasets = useMemo(
+    () => (metricsData ? getStateDatasets(metricsData) : []),
+    [metricsData],
+  )
+  const otherNumericDatasets = useMemo(
+    () => (metricsData ? getOtherNumericDatasets(metricsData) : []),
+    [metricsData],
+  )
+  const stateChartData = useMemo(
+    () => (metricsData ? convertStateDataToTimeline(metricsData, stateDatasets) : []),
+    [metricsData, stateDatasets],
+  )
 
   const colors = [
     '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', 
@@ -282,54 +235,96 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
 
         <div className="space-y-6">
           {/* 控制面板 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">时间范围:</span>
-                <Select value={timeRange} onValueChange={setTimeRange}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1分钟</SelectItem>
-                    <SelectItem value="5">5分钟</SelectItem>
-                    <SelectItem value="15">15分钟</SelectItem>
-                    <SelectItem value="30">30分钟</SelectItem>
-                    <SelectItem value="60">1小时</SelectItem>
-                    <SelectItem value="120">2小时</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {influxDBStatus && (
-                <div className="flex items-center gap-2 text-sm">
-                  <div className={`w-2 h-2 rounded-full ${
-                    influxDBStatus.healthy ? 'bg-green-500' : influxDBStatus.connected ? 'bg-yellow-500' : 'bg-red-500'
-                  }`} />
-                  <span className="text-muted-foreground">
-                    {influxDBStatus.connected ? 
-                      (influxDBStatus.healthy ? '健康' : '连接异常') : 
-                      '断开连接'
-                    }
-                  </span>
-                  {influxDBStatus.buffer_size !== undefined && (
-                    <span className="text-xs text-muted-foreground ml-2">
-                      缓冲: {influxDBStatus.buffer_size}
-                    </span>
-                  )}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">时间范围:</span>
+                  <Select value={timeRange} onValueChange={setTimeRange}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1分钟</SelectItem>
+                      <SelectItem value="5">5分钟</SelectItem>
+                      <SelectItem value="15">15分钟</SelectItem>
+                      <SelectItem value="30">30分钟</SelectItem>
+                      <SelectItem value="60">1小时</SelectItem>
+                      <SelectItem value="120">2小时</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                {influxDBStatus && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className={`w-2 h-2 rounded-full ${
+                      influxDBStatus.healthy ? 'bg-green-500' : influxDBStatus.connected ? 'bg-yellow-500' : 'bg-red-500'
+                    }`} />
+                    <span className="text-muted-foreground">
+                      {influxDBStatus.connected ? 
+                        (influxDBStatus.healthy ? '健康' : '连接异常') : 
+                        '断开连接'
+                      }
+                    </span>
+                    {influxDBStatus.buffer_size !== undefined && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        缓冲: {influxDBStatus.buffer_size}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <Button
+                onClick={handleRefresh}
+                disabled={loading || refreshing}
+                size="sm"
+                variant="outline"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? '刷新中...' : '刷新'}
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  setActionMessage(null)
+                  try {
+                    const res = await flushMutation.mutateAsync()
+                    setActionMessage(res?.message || '已刷新监控缓存')
+                  } catch (err) {
+                    setActionMessage(apiUtils.formatError(err))
+                  }
+                }}
+                disabled={flushMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${flushMutation.isPending ? 'animate-spin' : ''}`} />
+                刷新缓存
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  setActionMessage(null)
+                  try {
+                    const res = await cleanupMutation.mutateAsync()
+                    setActionMessage(res?.message || '已触发清理')
+                  } catch (err) {
+                    setActionMessage(apiUtils.formatError(err))
+                  }
+                }}
+                disabled={cleanupMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${cleanupMutation.isPending ? 'animate-spin' : ''}`} />
+                触发清理
+              </Button>
+              {actionMessage && (
+                <span className="text-xs text-muted-foreground">{actionMessage}</span>
               )}
             </div>
-            
-            <Button
-              onClick={handleRefresh}
-              disabled={loading || refreshing}
-              size="sm"
-              variant="outline"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? '刷新中...' : '刷新'}
-            </Button>
           </div>
 
           {/* 加载状态 */}
@@ -341,16 +336,16 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
           )}
 
           {/* 错误状态 */}
-          {error && (
+          {errorMessage && (
             <Card className="border-red-200">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-red-600">
                   <AlertCircle className="h-5 w-5" />
                   <span className="font-medium">获取指标数据失败</span>
                 </div>
-                <p className="mt-2 text-sm text-red-500">{error}</p>
+                <p className="mt-2 text-sm text-red-500">{errorMessage}</p>
                 <Button
-                  onClick={fetchMetrics}
+                  onClick={() => metricsQuery.refetch()}
                   size="sm"
                   variant="outline"
                   className="mt-3"
@@ -362,7 +357,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
           )}
 
           {/* 指标数据 */}
-          {metricsData && !loading && !error && (
+          {metricsData && !loading && !errorMessage && (
             <div className="space-y-6">
               {/* 吞吐量图表 */}
               {throughputDatasets.length > 0 && chartData.length > 0 && (
@@ -682,7 +677,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
           )}
 
           {/* 无数据状态 */}
-          {metricsData && !loading && !error && chartData.length === 0 && (
+          {metricsData && !loading && !errorMessage && chartData.length === 0 && (
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center py-8">

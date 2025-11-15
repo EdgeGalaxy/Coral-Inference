@@ -5,8 +5,8 @@ from typing import Any, Union
 import numpy as np
 from requests import Response
 from inference.core.exceptions import ModelArtefactError
+from inference.core.models import roboflow
 from inference.core.roboflow_api import (
-    get_from_url,
     wrap_roboflow_api_errors,
     _get_from_url,
 )
@@ -70,6 +70,7 @@ def get_from_url(
     json_response: bool = True,
     verify_content_length: bool = False,
 ) -> Union[Response, dict]:
+    print(f'request: {url} {verify_content_length}')
     return _get_from_url(
         url=url,
         json_response=json_response,

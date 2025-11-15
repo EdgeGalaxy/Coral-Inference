@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+from .config import RuntimeConfig
+
 
 @dataclass
 class RuntimeState:
@@ -12,7 +14,7 @@ class RuntimeState:
 
 @dataclass
 class RuntimeContext:
-    config: "RuntimeConfig"
+    config: RuntimeConfig
     state: RuntimeState
     inference_version: str
     log_messages: list[str] = field(default_factory=list)

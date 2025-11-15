@@ -4,7 +4,7 @@
 
 | 阶段 | 状态 | 目标 | 核心任务 | 交付/参考 |
 | --- | --- | --- | --- | --- |
-| **Phase A – 配置 & CLI 融合** | ⬜ | 让 Web 服务复用 `RuntimeDescriptor`/CLI，将 YAML/Env 驱动的 `WebAppConfig` 与 `coral-runtime web serve` 建立起来 | 1. 扩展 `services.*` schema，定义 `WebAppConfig` <br> 2. 新增 `coral-runtime web serve` 命令 + TestClient smoke <br> 3. Docker entrypoint 支持 CLI（保留 legacy 模式） | - `WEBAPP_REFACTOR_PLAN.md` §3.1 <br> - 新示例 `examples/runtime_web.yaml` |
+| **Phase A – 配置 & CLI 融合** | 🟡 FastAPI 已从 RuntimeDescriptor.services.webapp 导出 `/config.json` | 让 Web 服务复用 `RuntimeDescriptor`/CLI，将 YAML/Env 驱动的 `WebAppConfig` 与 `coral-runtime web serve` 建立起来 | 1. 扩展 `services.*` schema，定义 `WebAppConfig` <br> 2. 新增 `coral-runtime web serve` 命令 + TestClient smoke <br> 3. Docker entrypoint 支持 CLI（保留 legacy 模式） | - `WEBAPP_REFACTOR_PLAN.md` §3.1 <br> - 新示例 `examples/runtime_web.yaml` |
 | **Phase B – 服务层重构** | ⬜ | 解耦 Pipeline/Stream/Monitor 逻辑，提供可测试的 Service 层与标准化健康接口 | 1. `PipelineService`/`StreamService`/`MonitorService` 提供 async API + 单测 <br> 2. FastAPI 路由仅通过依赖注入使用 service <br> 3. 引入 `HealthService` 与 `/healthz` `/readyz` endpoints，取代脚本轮询 | - 迁移后的 `coral_inference/webapp` 模块 <br> - 新增 service 测试套件 |
 | **Phase C – 插件化 & Docker 对齐** | ⬜ | 开放 Web 插件、UI 插件，完善 Docker/文档/CI 流程 | 1. 定义 `web_plugins` entry point 与 `WebPluginSpec` <br> 2. CLI `plugins list` 展示 Web 插件；RuntimeContext 记录状态 <br> 3. Dockerfile/README 更新，健康检查使用 `/healthz` <br> 4. CI 加入 WebApp smoke（CLI + TestClient） | - 更新后的 Dockerfiles/entrypoint <br> - README/PLUGIN_PUBLISHING.md Web 章节 |
 
@@ -18,3 +18,8 @@
   - Phase C 依赖前两阶段（服务层稳定后再开放插件/镜像）。
 
 > 若出现新增需求（例：新的服务块、额外 Phase），请在表格后追加行并保持类似格式，确保后续“完成一个标记一个”。
+
+## 近期进展
+- `coral_inference.webapp.config.load_webapp_config` 现在可接收 `RuntimeDescriptor.services.webapp`；`docker/config/core/route.py` 在启动时读取 `RuntimeContext` 并将结果存入 FastAPI `app.state` 与 `GET /config.json`，为前端 ConfigProvider 提供统一入口。
+- `WEBAPP_CONFIG_CONTRACT.md` 定义的 schema 已用于配置生成，后续 CLI/Docker 仅需将用户提供的 `services.webapp` 传入即可。
+- `coral-runtime web serve` 命令已加入 CLI，支持以 `examples/runtime_web.yaml` 作为示例 descriptor 启动内置 FastAPI（默认使用 `docker.config.web:app`），为 Docker 之外的部署提供统一入口。

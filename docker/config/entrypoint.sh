@@ -8,6 +8,7 @@ export HOST=${HOST:-0.0.0.0}
 export PORT=${PORT:-9001}
 export ENABLE_STREAM_API=${ENABLE_STREAM_API:-true}
 export PWD=${PWD:-/app}
+export WEBAPP_START_MODE=${WEBAPP_START_MODE:-legacy}
 # 禁用推理路由
 export LEGACY_ROUTE_ENABLED=False
 export DISABLE_VERSION_CHECK=True
@@ -16,6 +17,19 @@ echo "Starting services with supervisor..."
 echo "HOST: $HOST"
 echo "PORT: $PORT"
 echo "ENABLE_STREAM_API: $ENABLE_STREAM_API"
+echo "WEBAPP_START_MODE: $WEBAPP_START_MODE"
+
+if [[ "${WEBAPP_START_MODE}" == "cli" ]]; then
+    WEBAPP_DESCRIPTOR=${WEBAPP_DESCRIPTOR:-/app/runtime_web.yaml}
+    if [[ ! -f "${WEBAPP_DESCRIPTOR}" ]]; then
+        echo "Descriptor not found for coral-runtime web serve: ${WEBAPP_DESCRIPTOR}" >&2
+        exit 1
+    fi
+    export WEB_COMMAND="coral-runtime web serve -c ${WEBAPP_DESCRIPTOR} --host ${HOST} --port ${PORT} --app docker.config.web:app"
+else
+    export WEB_COMMAND="uvicorn web:app --host ${HOST} --port ${PORT}"
+fi
+echo "WEB_COMMAND: ${WEB_COMMAND}"
 
 # 创建必要的目录
 mkdir -p $PWD/logs

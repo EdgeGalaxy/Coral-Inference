@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { recordingApi, apiUtils, VideoFileItem } from '@/lib/api'
+import { recordingApi, apiUtils } from '@/lib/api'
 import { Film, RefreshCw, Play, Download, ListFilter, HardDrive } from 'lucide-react'
+import { usePipelineRecordings } from '@/features/recordings/hooks'
+import { useApiBaseUrl } from '@/hooks/use-api-base-url'
 
 interface RecordingsViewerProps {
   pipelineId: string | null
@@ -26,36 +28,26 @@ const SORT_OPTIONS: SortOption[] = [
 ]
 
 export function RecordingsViewer({ pipelineId }: RecordingsViewerProps) {
-  const [files, setFiles] = useState<VideoFileItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [outputDirectory, setOutputDirectory] = useState<string>('records')
   const [sortKey, setSortKey] = useState<SortOption['key']>('created_at')
   const [search, setSearch] = useState('')
-
-  const fetchFiles = async () => {
-    if (!pipelineId) return
-    try {
-      setLoading(true)
-      setError(null)
-      const list = await recordingApi.list(pipelineId, outputDirectory)
-      setFiles(list)
-      if (list.length > 0 && !selected) {
-        setSelected(list[0].filename)
-      }
-    } catch (e) {
-      setError(apiUtils.formatError(e))
-    } finally {
-      setLoading(false)
-    }
-  }
+  const apiBaseUrl = useApiBaseUrl()
+  const recordingsQuery = usePipelineRecordings(pipelineId, outputDirectory)
+  const files = useMemo(() => recordingsQuery.data ?? [], [recordingsQuery.data])
+  const loading = recordingsQuery.isLoading
+  const refreshing = recordingsQuery.isFetching && !recordingsQuery.isLoading
+  const errorMessage = recordingsQuery.error ? apiUtils.formatError(recordingsQuery.error) : null
 
   useEffect(() => {
-    setFiles([])
     setSelected(null)
-    if (pipelineId) fetchFiles()
   }, [pipelineId, outputDirectory])
+
+  useEffect(() => {
+    if (!selected && files.length > 0) {
+      setSelected(files[0].filename)
+    }
+  }, [files, selected])
 
   const sortedAndFiltered = useMemo(() => {
     const filtered = files.filter(f =>
@@ -80,8 +72,8 @@ export function RecordingsViewer({ pipelineId }: RecordingsViewerProps) {
 
   const currentVideoUrl = useMemo(() => {
     if (!pipelineId || !selected) return ''
-    return recordingApi.videoUrl(pipelineId, selected, outputDirectory)
-  }, [pipelineId, selected, outputDirectory])
+    return recordingApi.videoUrl(pipelineId, selected, outputDirectory, apiBaseUrl)
+  }, [apiBaseUrl, pipelineId, selected, outputDirectory])
 
   const formatSize = (size: number) => {
     if (size >= 1024 * 1024 * 1024) return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`
@@ -133,11 +125,21 @@ export function RecordingsViewer({ pipelineId }: RecordingsViewerProps) {
               value={outputDirectory}
               onChange={(e) => setOutputDirectory(e.target.value)}
             /> */}
-            <Button variant="outline" onClick={fetchFiles} disabled={!pipelineId || loading}>
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <Button
+              variant="outline"
+              onClick={() => recordingsQuery.refetch()}
+              disabled={!pipelineId || loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
+
+        {errorMessage && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+            {errorMessage}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-5">
@@ -210,5 +212,3 @@ export function RecordingsViewer({ pipelineId }: RecordingsViewerProps) {
     </Card>
   )
 }
-
-

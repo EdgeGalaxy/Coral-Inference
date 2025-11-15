@@ -6,15 +6,17 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PipelineSelector } from '@/components/pipeline-selector'
 import { VideoStream } from '@/components/video-stream'
-import { RecordingsViewer } from '@/components/recordings-viewer'
 import { MetricsModal } from '@/components/metrics-modal'
 import { RecordingsModal } from '@/components/recordings-modal'
 import { BarChart, Settings, Info } from 'lucide-react'
+import { useConfig } from '@/providers/config-provider'
 
 export default function Home() {
   const [selectedPipeline, setSelectedPipeline] = useState<string | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
   const [showRecordings, setShowRecordings] = useState(false)
+  const { config } = useConfig()
+  const features = config.features
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -27,16 +29,18 @@ export default function Home() {
                 <Settings className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Coral Inference Dashboard</h1>
-                <p className="text-sm text-gray-600">实时推理管道监控与控制面板</p>
+                <h1 className="text-2xl font-bold text-gray-900">{config.app.name}</h1>
+                <p className="text-sm text-gray-600">{config.app.tagline || '实时推理管道监控与控制面板'}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              <Button asChild variant="outline">
-                <Link href="/custom-metrics">自定义指标</Link>
-              </Button>
-              {selectedPipeline && (
+              {features.customMetrics.enabled && (
+                <Button asChild variant="outline">
+                  <Link href="/custom-metrics">自定义指标</Link>
+                </Button>
+              )}
+              {selectedPipeline && features.monitoring.enabled && (
                 <Button
                   onClick={() => setShowMetrics(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
@@ -108,20 +112,22 @@ export default function Home() {
                     variant="outline"
                     className="w-full justify-start"
                     onClick={() => setShowMetrics(true)}
-                    disabled={!selectedPipeline}
+                    disabled={!selectedPipeline || !features.monitoring.enabled}
                   >
                     <BarChart className="h-4 w-4 mr-2" />
                     查看性能指标
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => setShowRecordings(true)}
-                    disabled={!selectedPipeline}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    查看录像
-                  </Button>
+                  {features.recordings.enabled && (
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => setShowRecordings(true)}
+                      disabled={!selectedPipeline}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      查看录像
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -129,7 +135,16 @@ export default function Home() {
 
           {/* 右侧视频流 */}
           <div className="lg:col-span-8 space-y-6">
-            <VideoStream pipelineId={selectedPipeline} />
+            {features.streams.enabled ? (
+              <VideoStream pipelineId={selectedPipeline} />
+            ) : (
+              <Card className="bg-white/70 backdrop-blur-sm border-white/20">
+                <CardHeader>
+                  <CardTitle>视频流未启用</CardTitle>
+                  <CardDescription>在配置中开启 streams 功能以查看实时画面</CardDescription>
+                </CardHeader>
+              </Card>
+            )}
           </div>
         </div>
 
@@ -145,17 +160,21 @@ export default function Home() {
       </main>
 
       {/* 指标Modal */}
-      <MetricsModal
-        isOpen={showMetrics}
-        onClose={() => setShowMetrics(false)}
-        pipelineId={selectedPipeline}
-      />
+      {features.monitoring.enabled && (
+        <MetricsModal
+          isOpen={showMetrics}
+          onClose={() => setShowMetrics(false)}
+          pipelineId={selectedPipeline}
+        />
+      )}
 
-      <RecordingsModal
-        isOpen={showRecordings}
-        onClose={() => setShowRecordings(false)}
-        defaultPipelineId={selectedPipeline}
-      />
+      {features.recordings.enabled && (
+        <RecordingsModal
+          isOpen={showRecordings}
+          onClose={() => setShowRecordings(false)}
+          defaultPipelineId={selectedPipeline}
+        />
+      )}
     </div>
   )
 } 

@@ -1,12 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import {
-  customMetricsApi,
-  type CustomMetric,
-  type CustomMetricChartResponse,
-} from '@/lib/api'
+import { apiUtils, type CustomMetric, type CustomMetricChartResponse } from '@/lib/api'
 import { ChartRenderer } from '@/components/custom-metrics/chart-renderer'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useConfig } from '@/providers/config-provider'
+import {
+  useCustomMetricChart,
+  useCustomMetrics,
+  useCreateCustomMetric,
+  useDeleteCustomMetric,
+} from '@/features/custom-metrics/hooks'
 
 const CHART_TYPES = [
   { label: '折线图', value: 'line' },
@@ -46,10 +49,12 @@ interface TagFilterItem {
 }
 
 export default function CustomMetricsPage() {
-  const [metrics, setMetrics] = useState<CustomMetric[]>([])
-  const [selectedMetric, setSelectedMetric] = useState<CustomMetric | null>(null)
-  const [chartResponse, setChartResponse] =
-    useState<CustomMetricChartResponse | null>(null)
+  const { config } = useConfig()
+  const metricsQuery = useCustomMetrics()
+  const [selectedMetricId, setSelectedMetricId] = useState<number | null>(null)
+  const [chartMinutes, setChartMinutes] = useState(15)
+  const createMetric = useCreateCustomMetric()
+  const deleteMetric = useDeleteCustomMetric()
   const [formState, setFormState] = useState({
     name: '',
     measurement: '',
@@ -65,63 +70,24 @@ export default function CustomMetricsPage() {
   const [tagFilters, setTagFilters] = useState<TagFilterItem[]>([
     { key: '', value: '' },
   ])
-
-  const [loadingList, setLoadingList] = useState(true)
-  const [listError, setListError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [chartMinutes, setChartMinutes] = useState(15)
-  const [chartLoading, setChartLoading] = useState(false)
-  const [chartError, setChartError] = useState<string | null>(null)
-
-  const fetchMetrics = useCallback(async () => {
-    try {
-      setLoadingList(true)
-      setListError(null)
-      const list = await customMetricsApi.list()
-      setMetrics(list)
-      if (list.length > 0 && !selectedMetric) {
-        setSelectedMetric(list[0])
-      }
-    } catch (error) {
-      setListError(
-        error instanceof Error ? error.message : '获取指标列表失败，请稍后重试'
-      )
-    } finally {
-      setLoadingList(false)
-    }
-  }, [selectedMetric])
-
-  useEffect(() => {
-    fetchMetrics()
-  }, [fetchMetrics])
-
-  const fetchChartData = useCallback(
-    async (metric: CustomMetric, minutes: number) => {
-      try {
-        setChartLoading(true)
-        setChartError(null)
-        const response = await customMetricsApi.fetchChartData(metric.id, {
-          minutes,
-        })
-        setChartResponse(response)
-      } catch (error) {
-        setChartError(
-          error instanceof Error ? error.message : '获取指标数据失败'
-        )
-      } finally {
-        setChartLoading(false)
-      }
-    },
-    []
+  const metrics = useMemo(() => metricsQuery.data ?? [], [metricsQuery.data])
+  const selectedMetric = useMemo(
+    () => metrics.find((metric) => metric.id === selectedMetricId) ?? null,
+    [metrics, selectedMetricId],
   )
-
   useEffect(() => {
-    if (selectedMetric) {
-      fetchChartData(selectedMetric, chartMinutes)
-    } else {
-      setChartResponse(null)
+    if (!selectedMetricId && metrics.length > 0) {
+      setSelectedMetricId(metrics[0].id)
     }
-  }, [selectedMetric, chartMinutes, fetchChartData])
+  }, [metrics, selectedMetricId])
+  const chartQuery = useCustomMetricChart(selectedMetric?.id ?? null, chartMinutes, {
+    enabled: config.features.customMetrics.enabled && Boolean(selectedMetric),
+  })
+  const chartResponse: CustomMetricChartResponse | null = chartQuery.data ?? null
+  const chartLoading = chartQuery.isLoading || chartQuery.isFetching
+  const chartError = chartQuery.error ? apiUtils.formatError(chartQuery.error) : null
+  const loadingList = metricsQuery.isLoading
+  const listError = metricsQuery.error ? apiUtils.formatError(metricsQuery.error) : null
 
   const handleFormChange = (
     key: keyof typeof formState,
@@ -158,6 +124,24 @@ export default function CustomMetricsPage() {
     })
     return filters
   }, [tagFilters])
+
+  if (!config.features.customMetrics.enabled) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 text-center text-slate-600">
+        <Card className="max-w-lg border-dashed">
+          <CardHeader>
+            <CardTitle>自定义指标未启用</CardTitle>
+            <CardDescription>请在 WebAppConfig.features.customMetrics 中启用此模块。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/">返回首页</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -196,23 +180,28 @@ export default function CustomMetricsPage() {
     }
 
     try {
-      setSaving(true)
-      const created = await customMetricsApi.create(payload)
-      setMetrics((prev) => [created, ...prev])
-      setSelectedMetric(created)
-      setFormState((prev) => ({
-        ...prev,
+      const created = await createMetric.mutateAsync(payload)
+      setSelectedMetricId(created.id)
+      setFormState({
         name: '',
-        fields: '',
         measurement: '',
+        fields: '',
+        aggregation: 'mean',
+        groupBy: '',
+        groupByTime: '5s',
+        chartType: 'line',
+        timeRangeMinutes: 15,
+        refreshInterval: 60,
         description: '',
-      }))
+      })
       setTagFilters([{ key: '', value: '' }])
     } catch (error) {
       alert(error instanceof Error ? error.message : '创建指标失败')
-    } finally {
-      setSaving(false)
     }
+  }
+
+  const handleRefresh = async () => {
+    await Promise.all([metricsQuery.refetch(), chartQuery.refetch()])
   }
 
   const handleDelete = async (metricId: number) => {
@@ -220,11 +209,9 @@ export default function CustomMetricsPage() {
       return
     }
     try {
-      await customMetricsApi.remove(metricId)
-      setMetrics((prev) => prev.filter((item) => item.id !== metricId))
-      if (selectedMetric?.id === metricId) {
-        setSelectedMetric(null)
-        setChartResponse(null)
+      await deleteMetric.mutateAsync(metricId)
+      if (selectedMetricId === metricId) {
+        setSelectedMetricId(null)
       }
     } catch (error) {
       alert(error instanceof Error ? error.message : '删除失败，请稍后重试')
@@ -248,12 +235,8 @@ export default function CustomMetricsPage() {
             <Button asChild variant="outline">
               <Link href="/">返回首页</Link>
             </Button>
-            <Button
-              variant="secondary"
-              onClick={fetchMetrics}
-              disabled={loadingList}
-            >
-              刷新列表
+            <Button variant="secondary" onClick={handleRefresh} disabled={loadingList}>
+              {loadingList ? '刷新中...' : '刷新列表'}
             </Button>
           </div>
         </div>
@@ -443,8 +426,8 @@ export default function CustomMetricsPage() {
                   />
                 </div>
 
-                <Button type="submit" disabled={saving} className="w-full">
-                  {saving ? '创建中...' : '保存指标'}
+                <Button type="submit" disabled={createMetric.isPending} className="w-full">
+                  {createMetric.isPending ? '创建中...' : '保存指标'}
                 </Button>
               </form>
             </CardContent>

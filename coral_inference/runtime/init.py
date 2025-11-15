@@ -1,5 +1,6 @@
 from typing import Optional
 
+from loguru import logger
 from coral_inference.core.models import utils as model_utils
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.runtime import patches
@@ -13,6 +14,9 @@ from .config import RuntimeConfig
 from .context import RuntimeContext, RuntimeState
 
 _CURRENT_CONTEXT: Optional[RuntimeContext] = None
+
+
+model_utils.roboflow.get_from_url = model_utils.get_from_url
 
 
 def init(config: Optional[RuntimeConfig] = None) -> RuntimeContext:
@@ -89,9 +93,6 @@ def init(config: Optional[RuntimeConfig] = None) -> RuntimeContext:
         if plugin_statuses:
             log_messages.append(f"Loaded plugins: {plugin_statuses}")
 
-    roboflow = model_utils.roboflow if hasattr(model_utils, "roboflow") else None
-    if roboflow:
-        roboflow.get_from_url = model_utils.get_from_url
 
     context = RuntimeContext(
         config=config,
@@ -100,6 +101,7 @@ def init(config: Optional[RuntimeConfig] = None) -> RuntimeContext:
         log_messages=log_messages,
     )
     _CURRENT_CONTEXT = context
+    logger.info(f'{context.log_messages}')
     return context
 
 

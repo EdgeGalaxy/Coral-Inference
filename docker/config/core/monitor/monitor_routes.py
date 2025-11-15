@@ -14,6 +14,7 @@ from .influxdb_service import influx_client, metrics_processor, InfluxQueryParam
 from .custom_metrics_routes import register_custom_metrics_routes
 from .monitor_optimized_influxdb import OptimizedPipelineMonitorWithInfluxDB
 from ..routing_utils import get_monitor
+from coral_inference.webapp import MonitorService
 
 
 # ==================== Request Models ====================
@@ -218,6 +219,15 @@ class ErrorResponse(BaseModel):
 
 
 def register_monitor_routes(app: FastAPI) -> None:
+    # expose MonitorService for other parts (health checks, DI)
+    if not hasattr(app.state, "monitor_service"):
+        app.state.monitor_service = None
+
+    def _monitor_service_dep() -> MonitorService:
+        svc = getattr(app.state, "monitor_service", None)
+        if svc is None:
+            raise HTTPException(status_code=503, detail="Monitor service not initialized")
+        return svc
     @app.get(
         "/inference_pipelines/{pipeline_id}/metrics",
         response_model=MetricsResponse,
@@ -374,21 +384,11 @@ def register_monitor_routes(app: FastAPI) -> None:
     )
     @with_route_exceptions_async
     async def flush_monitor_cache(
-        monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
+        monitor_service: MonitorService = Depends(_monitor_service_dep),
     ) -> OperationResponse:
         try:
-            # 刷新结果缓存
-            await monitor.results_collector.flush_all_caches()
-
-            # 如果启用了 InfluxDB，也刷新 InfluxDB 缓冲区
-            if monitor.influxdb_collector:
-                await monitor.influxdb_collector.flush_buffer()
-
-            message = "缓存数据已成功刷新到文件系统" + (
-                " 和 InfluxDB" if monitor.influxdb_collector else ""
-            )
-
-            return OperationResponse(status="success", message=message)
+            res = await monitor_service.flush_cache()
+            return OperationResponse(status="success", message=res.get("message", "缓存刷新完成"))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"刷新缓存失败: {str(e)}")
 
@@ -402,8 +402,28 @@ def register_monitor_routes(app: FastAPI) -> None:
     @with_route_exceptions_async
     async def get_monitor_status(
         monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
+        monitor_service: MonitorService = Depends(_monitor_service_dep),
     ) -> MonitorStatusResponse:
         try:
+            if hasattr(monitor_service, "status"):
+                try:
+                    status_payload = await monitor_service.status()
+                    if status_payload and isinstance(status_payload, dict):
+                        running = status_payload.get("running", getattr(monitor, "running", True))
+                        pipeline_count = (
+                            status_payload.get("pipeline_count")
+                            if isinstance(status_payload.get("pipeline_count"), int)
+                            else len(getattr(monitor, "pipeline_ids_mapper", {}))
+                        )
+                except Exception:
+                    status_payload = None
+                    running = getattr(monitor, "running", True)
+                    pipeline_count = len(getattr(monitor, "pipeline_ids_mapper", {}))
+            else:
+                status_payload = None
+                running = getattr(monitor, "running", True)
+                pipeline_count = len(getattr(monitor, "pipeline_ids_mapper", {}))
+
             # 获取性能指标
             performance_metrics_data = await monitor.get_performance_metrics()
 
@@ -411,10 +431,10 @@ def register_monitor_routes(app: FastAPI) -> None:
             performance_metrics = PerformanceMetrics(**performance_metrics_data)
 
             status_data = MonitorStatusData(
-                running=monitor.running,
+                running=running,
                 output_dir=str(monitor.output_dir),
                 poll_interval=monitor.poll_interval,
-                pipeline_count=len(monitor.pipeline_ids_mapper),
+                pipeline_count=pipeline_count,
                 is_healthy=monitor.is_healthy(),
                 performance_metrics=performance_metrics,
                 influxdb_enabled=monitor.enable_influxdb,
@@ -438,28 +458,26 @@ def register_monitor_routes(app: FastAPI) -> None:
     )
     @with_route_exceptions_async
     async def get_disk_usage(
-        monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
+        monitor_service: MonitorService = Depends(_monitor_service_dep),
     ) -> DiskUsageResponse:
         try:
-            # 计算磁盘使用情况
-            current_size = await asyncio.get_event_loop().run_in_executor(
-                None,
-                monitor.cleanup_manager._get_directory_size_sync,
-                monitor.output_dir,
-            )
-
-            usage_percentage = (
-                current_size / monitor.cleanup_manager.max_size_gb
-            ) * 100
-            free_space = max(0, monitor.cleanup_manager.max_size_gb - current_size)
-
-            disk_data = DiskUsageData(
-                output_dir=str(monitor.output_dir),
-                current_size_gb=round(current_size, 2),
-                max_size_gb=monitor.cleanup_manager.max_size_gb,
-                usage_percentage=round(usage_percentage, 1),
-                free_space_gb=round(free_space, 2),
-            )
+            disk_info = await monitor_service.disk_usage()
+            if not disk_info:
+                disk_data = DiskUsageData(
+                    output_dir="unknown",
+                    current_size_gb=0,
+                    max_size_gb=0,
+                    usage_percentage=0,
+                    free_space_gb=0,
+                )
+            else:
+                disk_data = DiskUsageData(
+                    output_dir=str(disk_info.get("output_dir", "")),
+                    current_size_gb=round(float(disk_info.get("current_size_gb", 0)), 2),
+                    max_size_gb=float(disk_info.get("max_size_gb", 0) or 1),
+                    usage_percentage=round(float(disk_info.get("usage_percentage", 0)), 1),
+                    free_space_gb=round(float(disk_info.get("free_space_gb", 0)), 2),
+                )
 
             return DiskUsageResponse(status="success", data=disk_data)
         except Exception as e:
@@ -476,12 +494,11 @@ def register_monitor_routes(app: FastAPI) -> None:
     )
     @with_route_exceptions_async
     async def trigger_cleanup(
-        monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
+        monitor_service: MonitorService = Depends(_monitor_service_dep),
     ) -> OperationResponse:
         try:
-            # 触发清理任务
-            await monitor.cleanup_manager.check_and_cleanup_async()
-            return OperationResponse(status="success", message="磁盘清理任务已触发")
+            res = await monitor_service.trigger_cleanup()
+            return OperationResponse(status="success", message=res.get("message", "磁盘清理任务已触发"))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"磁盘清理失败: {str(e)}")
 
@@ -494,31 +511,20 @@ def register_monitor_routes(app: FastAPI) -> None:
     )
     @with_route_exceptions_async
     async def get_influxdb_status(
-        monitor: OptimizedPipelineMonitorWithInfluxDB = Depends(get_monitor),
+        monitor_service: MonitorService = Depends(_monitor_service_dep),
     ) -> InfluxDBStatusResponse:
         try:
-            if not monitor.influxdb_collector:
-                status_data = InfluxDBStatusData(
-                    enabled=False, connected=False, message="InfluxDB 收集器未初始化"
-                )
-                return InfluxDBStatusResponse(status="success", data=status_data)
-
-            # 执行健康检查
-            is_healthy = False
-            if monitor.influxdb_collector.connection_manager:
-                is_healthy = (
-                    await monitor.influxdb_collector.connection_manager.health_check()
-                )
-
+            payload = await monitor_service.influx_status()
             status_data = InfluxDBStatusData(
-                enabled=monitor.enable_influxdb,
-                connected=monitor.influxdb_collector.enabled,
-                healthy=is_healthy,
-                url=monitor.influxdb_collector.influxdb_url,
-                database=monitor.influxdb_collector.influxdb_database,
-                measurement=monitor.influxdb_collector.measurement,
-                buffer_size=len(monitor.influxdb_collector.metrics_buffer),
-                last_flush_time=monitor.influxdb_collector.last_flush_time,
+                enabled=payload.get("enabled", False),
+                connected=payload.get("connected", False),
+                healthy=payload.get("healthy"),
+                url=payload.get("url"),
+                database=payload.get("database"),
+                measurement=payload.get("measurement"),
+                buffer_size=payload.get("buffer_size"),
+                last_flush_time=payload.get("last_flush_time"),
+                message=payload.get("message"),
             )
 
             return InfluxDBStatusResponse(status="success", data=status_data)

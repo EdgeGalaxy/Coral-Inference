@@ -1,0 +1,23 @@
+platform: auto
+services:
+  webapp:
+    app:
+      name: "Coral Runtime"
+      tagline: "Realtime inference control plane"
+    api:
+      baseUrl: "http://localhost:9001"
+    features:
+      pipelines:
+        enabled: true
+      streams:
+        enabled: true
+      monitoring:
+        enabled: true
+      recordings:
+        enabled: true
+    streams:
+      iceServers:
+        - urls: "stun:stun.l.google.com:19302"
+    ui:
+      theme:
+        mode: "system"

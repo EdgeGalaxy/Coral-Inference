@@ -1,24 +1,11 @@
-// API服务 - 连接后端接口
-const isIpAddress = (host: string): boolean => {
-  // IPv4 pattern
-  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  // IPv6 pattern (simplified)
-  const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
-  return ipv4Pattern.test(host) || ipv6Pattern.test(host);
-};
-// 环境变量配置
-const getApiBaseUrl = (): string => {
-  // 在浏览器环境中，动态获取当前页面的主机名
-  // 这样可以确保API请求与前端页面在同一个域下，解决了内网访问的问题
-  if (typeof window !== 'undefined') {
-    // 使用与浏览器地址栏相同的协议和主机名，端口固定为9001
-    return `${window.location.protocol}//${window.location.hostname}${isIpAddress(window.location.hostname) ? ':9001' : ''}`;
-  }
+import { resolveApiBaseUrl } from '@/config/runtime'
 
-  // 在服务器端环境(SSR/SSG)或构建时，使用环境变量或默认值
-  // 这种情况下的请求地址需要通过环境变量 `NEXT_PUBLIC_API_BASE_URL` 来指定
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
+type ApiRequestOptions = RequestInit & {
+  baseUrl?: string
 }
+
+// API服务 - 连接后端接口
+const getApiBaseUrl = (override?: string): string => override || resolveApiBaseUrl()
 
 // 状态枚举
 export type PipelineStatus = 'pending' | 'running' | 'warning' | 'failure' | 'muted' | 'stopped' | 'not_found' | 'timeout'
@@ -163,17 +150,18 @@ export class ApiError extends Error {
 // 通用请求函数
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
-  const API_BASE_URL = getApiBaseUrl()
+  const { baseUrl, ...requestInit } = options
+  const API_BASE_URL = getApiBaseUrl(baseUrl)
   const url = `${API_BASE_URL}${endpoint}`
   
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...requestInit.headers,
     },
-    ...options,
+    ...requestInit,
   }
 
   try {
@@ -209,7 +197,7 @@ async function apiRequest<T>(
 // Pipeline相关API
 export const pipelineApi = {
   // 获取Pipeline列表
-  async list(): Promise<Pipeline[]> {
+  async list(apiBaseUrl?: string): Promise<Pipeline[]> {
     try {
       const response = await apiRequest<{
         pipelines: string[]
@@ -218,7 +206,7 @@ export const pipelineApi = {
           pipeline_name: string
           created_at: number
         }>
-      }>('/inference_pipelines/list')
+      }>('/inference_pipelines/list', { baseUrl: apiBaseUrl })
       
       // 转换为前端需要的格式
       const pipelines: Pipeline[] = response.fixed_pipelines.map(pipelineInfo => ({
@@ -235,10 +223,11 @@ export const pipelineApi = {
   },
 
   // 获取Pipeline信息
-  async getInfo(pipelineId: string): Promise<PipelineInfoResponse> {
+  async getInfo(pipelineId: string, apiBaseUrl?: string): Promise<PipelineInfoResponse> {
     try {
       const response = await apiRequest<PipelineInfoResponse>(
-        `/inference_pipelines/${pipelineId}/info`
+        `/inference_pipelines/${pipelineId}/info`,
+        { baseUrl: apiBaseUrl }
       )
       return response
     } catch (error) {
@@ -250,7 +239,8 @@ export const pipelineApi = {
   // 获取Pipeline指标数据
   async getMetrics(
     pipelineId: string,
-    timeRange: { start?: number; end?: number; minutes?: number } = { minutes: 5 }
+    timeRange: { start?: number; end?: number; minutes?: number } = { minutes: 5 },
+    apiBaseUrl?: string
   ): Promise<MetricsResponse> {
     try {
       const params = new URLSearchParams()
@@ -262,7 +252,7 @@ export const pipelineApi = {
       const queryString = params.toString()
       const endpoint = `/inference_pipelines/${pipelineId}/metrics${queryString ? `?${queryString}` : ''}`
       
-      const response = await apiRequest<MetricsResponse>(endpoint)
+      const response = await apiRequest<MetricsResponse>(endpoint, { baseUrl: apiBaseUrl })
       return response
     } catch (error) {
       console.error('获取Pipeline指标失败:', error)
@@ -271,15 +261,15 @@ export const pipelineApi = {
   },
 
   // 获取带有实际状态的Pipeline列表
-  async listWithStatus(): Promise<Pipeline[]> {
+  async listWithStatus(apiBaseUrl?: string): Promise<Pipeline[]> {
     try {
       // 首先获取基础的Pipeline列表
-      const pipelines = await this.list()
+      const pipelines = await this.list(apiBaseUrl)
       
       // 并行获取每个Pipeline的状态
       const statusPromises = pipelines.map(async (pipeline: Pipeline) => {
         try {
-          const statusResponse = await monitorApi.getStatus(pipeline.id)
+          const statusResponse = await monitorApi.getStatus(pipeline.id, apiBaseUrl)
           const calculatedStatus = statusUtils.calculatePipelineStatus(
             statusResponse.status,
             statusResponse.report
@@ -313,7 +303,8 @@ export const pipelineApi = {
   // 创建WebRTC连接
   async createWebRTCOffer(
     pipelineId: string,
-    offer: WebRTCOfferRequest
+    offer: WebRTCOfferRequest,
+    apiBaseUrl?: string
   ): Promise<WebRTCOfferResponse> {
     try {
       const body = JSON.stringify(offer)
@@ -323,6 +314,7 @@ export const pipelineApi = {
         {
           method: 'POST',
           body: body,
+          baseUrl: apiBaseUrl,
         }
       )
       
@@ -337,10 +329,11 @@ export const pipelineApi = {
 // 监控相关API
 export const monitorApi = {
   // 获取Pipeline状态
-  async getStatus(pipelineId: string): Promise<PipelineStatusResponse> {
+  async getStatus(pipelineId: string, apiBaseUrl?: string): Promise<PipelineStatusResponse> {
     try {
       const response = await apiRequest<PipelineStatusResponse>(
-        `/inference_pipelines/${pipelineId}/status`
+        `/inference_pipelines/${pipelineId}/status`,
+        { baseUrl: apiBaseUrl }
       )
       
       return response
@@ -351,7 +344,7 @@ export const monitorApi = {
   },
 
   // 获取磁盘使用情况
-  async getDiskUsage() {
+  async getDiskUsage(apiBaseUrl?: string) {
     try {
       const response = await apiRequest<{
         status: string
@@ -362,7 +355,7 @@ export const monitorApi = {
           usage_percentage: number
           free_space_gb: number
         }
-      }>('/monitor/disk-usage')
+      }>('/monitor/disk-usage', { baseUrl: apiBaseUrl })
       
       return response.data
     } catch (error) {
@@ -372,13 +365,14 @@ export const monitorApi = {
   },
 
   // 手动刷新缓存
-  async flushCache() {
+  async flushCache(apiBaseUrl?: string) {
     try {
       const response = await apiRequest<{
         status: string
         message: string
       }>('/monitor/flush-cache', {
         method: 'POST',
+        baseUrl: apiBaseUrl,
       })
       
       return response
@@ -389,13 +383,14 @@ export const monitorApi = {
   },
 
   // 手动触发清理
-  async triggerCleanup() {
+  async triggerCleanup(apiBaseUrl?: string) {
     try {
       const response = await apiRequest<{
         status: string
         message: string
       }>('/monitor/cleanup', {
         method: 'POST',
+        baseUrl: apiBaseUrl,
       })
       
       return response
@@ -406,7 +401,7 @@ export const monitorApi = {
   },
 
   // 获取监控器状态
-  async getMonitorStatus() {
+  async getMonitorStatus(apiBaseUrl?: string) {
     try {
       const response = await apiRequest<{
         status: string
@@ -430,7 +425,7 @@ export const monitorApi = {
           influxdb_enabled: boolean
           influxdb_connected: boolean
         }
-      }>('/monitor/status')
+      }>('/monitor/status', { baseUrl: apiBaseUrl })
       
       return response.data
     } catch (error) {
@@ -442,7 +437,8 @@ export const monitorApi = {
   // 获取Pipeline指标摘要（从 InfluxDB）
   async getMetricsSummary(
     pipelineId: string,
-    timeRange: { start?: number; end?: number; minutes?: number; aggregation_window?: string } = { minutes: 30 }
+    timeRange: { start?: number; end?: number; minutes?: number; aggregation_window?: string } = { minutes: 30 },
+    apiBaseUrl?: string
   ) {
     try {
       const params = new URLSearchParams()
@@ -473,7 +469,7 @@ export const monitorApi = {
             [key: string]: any
           }>
         }
-      }>(endpoint)
+      }>(endpoint, { baseUrl: apiBaseUrl })
       
       return response.data
     } catch (error) {
@@ -483,7 +479,7 @@ export const monitorApi = {
   },
 
   // 获取 InfluxDB 连接状态
-  async getInfluxDBStatus() {
+  async getInfluxDBStatus(apiBaseUrl?: string) {
     try {
       const response = await apiRequest<{
         status: string
@@ -498,7 +494,7 @@ export const monitorApi = {
           last_flush_time?: number
           message?: string
         }
-      }>('/monitor/influxdb/status')
+      }>('/monitor/influxdb/status', { baseUrl: apiBaseUrl })
       
       return response.data
     } catch (error) {
@@ -510,54 +506,63 @@ export const monitorApi = {
 
 // 自定义指标 API
 export const customMetricsApi = {
-  async list(): Promise<CustomMetric[]> {
-    return apiRequest<CustomMetric[]>('/custom-metrics')
+  async list(apiBaseUrl?: string): Promise<CustomMetric[]> {
+    return apiRequest<CustomMetric[]>('/custom-metrics', { baseUrl: apiBaseUrl })
   },
 
-  async create(payload: CustomMetricPayload): Promise<CustomMetric> {
+  async create(payload: CustomMetricPayload, apiBaseUrl?: string): Promise<CustomMetric> {
     return apiRequest<CustomMetric>('/custom-metrics', {
       method: 'POST',
       body: JSON.stringify(payload),
+      baseUrl: apiBaseUrl,
     })
   },
 
-  async get(metricId: number): Promise<CustomMetric> {
-    return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`)
+  async get(metricId: number, apiBaseUrl?: string): Promise<CustomMetric> {
+    return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`, { baseUrl: apiBaseUrl })
   },
 
-  async update(metricId: number, payload: CustomMetricPayload): Promise<CustomMetric> {
+  async update(
+    metricId: number,
+    payload: CustomMetricPayload,
+    apiBaseUrl?: string
+  ): Promise<CustomMetric> {
     return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
+      baseUrl: apiBaseUrl,
     })
   },
 
-  async remove(metricId: number): Promise<void> {
-    await apiRequest(`/custom-metrics/${metricId}`, { method: 'DELETE' })
+  async remove(metricId: number, apiBaseUrl?: string): Promise<void> {
+    await apiRequest(`/custom-metrics/${metricId}`, { method: 'DELETE', baseUrl: apiBaseUrl })
   },
 
   async fetchChartData(
     metricId: number,
-    params: { minutes?: number; start_time?: number; end_time?: number } = {}
+    params: { minutes?: number; start_time?: number; end_time?: number } = {},
+    apiBaseUrl?: string
   ): Promise<CustomMetricChartResponse> {
-    return apiRequest<CustomMetricChartResponse>(
-      `/custom-metrics/${metricId}/chart-data`,
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    )
+    return apiRequest<CustomMetricChartResponse>(`/custom-metrics/${metricId}/chart-data`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+      baseUrl: apiBaseUrl,
+    })
   },
 }
 
 // 录像相关API
 export const recordingApi = {
   // 列出录像文件
-  async list(pipelineId: string, outputDirectory: string = 'records'): Promise<VideoFileItem[]> {
+  async list(
+    pipelineId: string,
+    outputDirectory: string = 'records',
+    apiBaseUrl?: string,
+  ): Promise<VideoFileItem[]> {
     const params = new URLSearchParams()
     if (outputDirectory) params.append('output_directory', outputDirectory)
     const endpoint = `/inference_pipelines/${pipelineId}/videos${params.toString() ? `?${params.toString()}` : ''}`
-    const res = await apiRequest<VideoListResponse>(endpoint)
+    const res = await apiRequest<VideoListResponse>(endpoint, { baseUrl: apiBaseUrl })
     if (res.status !== 'success') {
       throw new ApiError(res.error || '获取录像列表失败')
     }
@@ -565,8 +570,13 @@ export const recordingApi = {
   },
 
   // 构造可播放的视频URL（支持Range）
-  videoUrl(pipelineId: string, filename: string, outputDirectory: string = 'records'): string {
-    const API_BASE_URL = getApiBaseUrl()
+  videoUrl(
+    pipelineId: string,
+    filename: string,
+    outputDirectory: string = 'records',
+    apiBaseUrl?: string,
+  ): string {
+    const API_BASE_URL = getApiBaseUrl(apiBaseUrl)
     const params = new URLSearchParams()
     if (outputDirectory) params.append('output_directory', outputDirectory)
     const query = params.toString()
@@ -614,13 +624,14 @@ export const statusUtils = {
 // 工具函数
 export const apiUtils = {
   // 检查API连接状态
-  async checkConnection(pipelineId?: string): Promise<boolean> {
+  async checkConnection(options: { pipelineId?: string; apiBaseUrl?: string } = {}): Promise<boolean> {
+    const { pipelineId, apiBaseUrl } = options
     try {
       if (pipelineId) {
-        await monitorApi.getStatus(pipelineId)
+        await monitorApi.getStatus(pipelineId, apiBaseUrl)
       } else {
         // 如果没有提供pipelineId，尝试获取pipeline列表
-        await pipelineApi.list()
+        await pipelineApi.list(apiBaseUrl)
       }
       return true
     } catch (error) {

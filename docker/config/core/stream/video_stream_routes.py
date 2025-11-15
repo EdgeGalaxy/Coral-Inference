@@ -6,7 +6,7 @@ from typing import Dict, Optional, Union, List, Tuple
 
 import numpy as np
 import cv2
-from fastapi import FastAPI, Request, Header
+from fastapi import FastAPI, Request, Header, Depends
 from fastapi.exceptions import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -35,6 +35,7 @@ from loguru import logger
 from inference.core.env import MODEL_CACHE_DIR
 
 from ..cache import PipelineCache
+from coral_inference.webapp import StreamService
 
 
 class VideoCaptureRequest(BaseModel):
@@ -84,6 +85,9 @@ def register_video_stream_routes(
     stream_manager_client: StreamManagerClient,
     pipeline_cache: PipelineCache,
 ) -> None:
+    def _stream_service_dep() -> StreamService:
+        return getattr(app.state, "stream_service", StreamService(stream_manager_client))
+
     def _map_pipeline_id(pipeline_id: str) -> str:
         mapped = pipeline_cache.get(pipeline_id)
         if mapped:
@@ -98,13 +102,13 @@ def register_video_stream_routes(
     )
     @with_route_exceptions_async
     async def initialize_offer(
-        pipeline_id: str, request: PatchInitialiseWebRTCPipelinePayload
+        pipeline_id: str,
+        request: PatchInitialiseWebRTCPipelinePayload,
+        stream_service: StreamService = Depends(_stream_service_dep),
     ) -> CommandResponse:
         mapped = pipeline_cache.get(pipeline_id)
         real_id = mapped["restore_pipeline_id"] if mapped else pipeline_id
-        return await stream_manager_client.offer(
-            pipeline_id=real_id, offer_request=request
-        )
+        return await stream_service.offer(pipeline_id=real_id, offer_request=request)
 
     @app.post(
         "/inference_pipelines/video/capture",
@@ -153,36 +157,20 @@ def register_video_stream_routes(
     async def list_pipeline_videos(
         pipeline_id: str,
         output_directory: str = "records",
+        pipeline_service=Depends(lambda: app.state.pipeline_service),
     ) -> VideoListResponse:
         try:
-            # real_id = _map_pipeline_id(pipeline_id)
-            base_dir = os.path.join(
-                MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory
-            )
-            if not os.path.isdir(base_dir):
-                return VideoListResponse(status="success", files=[])
-
-            items: List[VideoFileItem] = []
-            for name in os.listdir(base_dir):
-                if not name.lower().endswith(".mp4"):
-                    continue
-                file_path = os.path.join(base_dir, name)
-                if not os.path.isfile(file_path):
-                    continue
-                stat = os.stat(file_path)
-                items.append(
-                    VideoFileItem(
-                        filename=name,
-                        size_bytes=stat.st_size,
-                        created_at=int(stat.st_ctime),
-                        modified_at=int(stat.st_mtime),
-                    )
+            items = pipeline_service.list_video_files(pipeline_id, output_directory)
+            files = [
+                VideoFileItem(
+                    filename=item["filename"],
+                    size_bytes=item["size_bytes"],
+                    created_at=item["created_at"],
+                    modified_at=item["modified_at"],
                 )
-
-            # 按创建时间倒序
-            items.sort(key=lambda x: x.created_at, reverse=True)
-            # 取从第二个开始，第一个正在写入，无法预览
-            return VideoListResponse(status="success", files=items[1:])
+                for item in items
+            ]
+            return VideoListResponse(status="success", files=files)
         except Exception as e:
             return VideoListResponse(status="error", error=str(e))
 
