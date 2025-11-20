@@ -55,7 +55,7 @@ RUN apt-get update -y \
         libx264-dev \
         x264 \
         libavcodec-extra \
-        ffmpeg \
+        # ffmpeg \
         curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
