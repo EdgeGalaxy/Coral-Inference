@@ -66,6 +66,35 @@ class RuntimeDeploymentRequest(BaseModel):
     auto_restart: Optional[bool] = True
 
 
+def _extract_runtime_identity_fields(
+    *,
+    package: Optional[Dict[str, Any]] = None,
+    runtime_deployment: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Optional[str]]:
+    source = package or ((runtime_deployment or {}).get("parameters") or {})
+    return {
+        "deployment_revision": source.get("deployment_revision"),
+        "package_digest": source.get("package_digest"),
+        "workflow_digest": source.get("workflow_digest"),
+        "model_bindings_digest": source.get("model_bindings_digest"),
+        "package_generated_at": source.get("package_generated_at"),
+    }
+
+
+def _default_runtime_phase(running_status: str) -> str:
+    mapping = {
+        "pending": "pending",
+        "running": "running",
+        "warning": "degraded",
+        "failure": "failure",
+        "muted": "muted",
+        "stopped": "stopped",
+        "not_found": "pipeline_missing",
+        "timeout": "timeout",
+    }
+    return mapping.get(str(running_status or "").lower(), "unknown")
+
+
 def _map_report_to_running_status(report: Optional[Dict[str, Any]]) -> str:
     if not report:
         return "pending"
@@ -99,7 +128,15 @@ def _build_runtime_deployment_response(
     report: Optional[Dict[str, Any]] = None,
     runtime_deployment: Optional[Dict[str, Any]] = None,
     error_message: Optional[str] = None,
+    runtime_phase: Optional[str] = None,
+    phase_message: Optional[str] = None,
+    observed_at: Optional[str] = None,
+    package: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    identity_fields = _extract_runtime_identity_fields(
+        package=package,
+        runtime_deployment=runtime_deployment,
+    )
     return {
         "deployment_id": deployment_id,
         "workspace_id": workspace_id,
@@ -107,7 +144,11 @@ def _build_runtime_deployment_response(
         "running_status": running_status,
         "report": report,
         "error_message": error_message,
+        "runtime_phase": runtime_phase or _default_runtime_phase(running_status),
+        "phase_message": phase_message,
+        "observed_at": observed_at or datetime.now(timezone.utc).isoformat(),
         "runtime_deployment": runtime_deployment,
+        **identity_fields,
     }
 
 
@@ -264,52 +305,120 @@ async def _initialise_runtime_deployment(
     stream_manager_client: StreamManagerClient,
     pipeline_cache: PipelineCache,
 ) -> Dict[str, Any]:
-    package = await _fetch_runtime_package(
-        workspace_id=request.workspace_id,
-        deployment_id=deployment_id,
-        backend_url=request.backend_url,
-        backend_secret=request.backend_secret,
-    )
-    package = register_runtime_package(package)
-    if request.pipeline_name:
-        package["deployment_name"] = request.pipeline_name
-
-    initialisation_payload = build_initialise_payload_from_runtime_package(
-        package=package,
-        api_key=API_KEY,
-        existing_pipeline_id=request.existing_pipeline_id,
-    )
-    initialisation_request = InitialisePipelinePayload.model_validate(
-        initialisation_payload
-    )
-    response = await stream_manager_client.initialise_pipeline(
-        initialisation_request=initialisation_request
-    )
-    response_dict = _extract_command_response(response)
-    pipeline_id = (response_dict.get("context", {}) or {}).get("pipeline_id")
-    if pipeline_id:
-        parameters = {
-            "deployment_id": package.get("deployment_id"),
-            "workspace_id": package.get("workspace_id"),
-            "gateway_id": package.get("gateway_id"),
-            "output_image_fields": package.get("stream_config", {}).get(
-                "output_image_fields", []
-            ),
-            "deployment_mode": "runtime_package",
-        }
-        pipeline_cache.create(
-            pipeline_id=pipeline_id,
-            pipeline_name=package.get("deployment_name") or package.get("workflow_name") or "",
-            payload=initialisation_request.model_dump(),
-            parameters=parameters,
-            auto_restart=bool(request.auto_restart),
+    package: Optional[Dict[str, Any]] = None
+    try:
+        package = await _fetch_runtime_package(
+            workspace_id=request.workspace_id,
+            deployment_id=deployment_id,
+            backend_url=request.backend_url,
+            backend_secret=request.backend_secret,
+        )
+        await _emit_runtime_phase_to_backend(
+            workspace_id=request.workspace_id,
+            deployment_id=deployment_id,
+            backend_url=request.backend_url,
+            backend_secret=request.backend_secret,
+            pipeline_id=request.existing_pipeline_id,
+            running_status="pending",
+            runtime_phase="package_fetched",
+            phase_message="Runtime package fetched from CoralReefBackend",
+            package=package,
         )
 
-    return {
-        "command_response": response_dict,
-        "pipeline_id": pipeline_id,
-        "package": package,
-    }
+        package = register_runtime_package(package)
+        await _emit_runtime_phase_to_backend(
+            workspace_id=request.workspace_id,
+            deployment_id=deployment_id,
+            backend_url=request.backend_url,
+            backend_secret=request.backend_secret,
+            pipeline_id=request.existing_pipeline_id,
+            running_status="pending",
+            runtime_phase="package_registered",
+            phase_message="Runtime package registered in Coral-Inference runtime",
+            package=package,
+        )
+        if request.pipeline_name:
+            package["deployment_name"] = request.pipeline_name
+
+        initialisation_payload = build_initialise_payload_from_runtime_package(
+            package=package,
+            api_key=API_KEY,
+            existing_pipeline_id=request.existing_pipeline_id,
+        )
+        initialisation_request = InitialisePipelinePayload.model_validate(
+            initialisation_payload
+        )
+        response = await stream_manager_client.initialise_pipeline(
+            initialisation_request=initialisation_request
+        )
+        response_dict = _extract_command_response(response)
+        pipeline_id = (response_dict.get("context", {}) or {}).get("pipeline_id")
+        parameters = None
+        if pipeline_id:
+            parameters = {
+                "deployment_id": package.get("deployment_id"),
+                "workspace_id": package.get("workspace_id"),
+                "gateway_id": package.get("gateway_id"),
+                "output_image_fields": package.get("stream_config", {}).get(
+                    "output_image_fields", []
+                ),
+                "deployment_mode": "runtime_package",
+                "deployment_revision": package.get("deployment_revision"),
+                "package_digest": package.get("package_digest"),
+                "workflow_digest": package.get("workflow_digest"),
+                "model_bindings_digest": package.get("model_bindings_digest"),
+                "package_generated_at": package.get("package_generated_at"),
+                "last_initialised_at": datetime.now(timezone.utc).isoformat(),
+            }
+            pipeline_cache.create(
+                pipeline_id=pipeline_id,
+                pipeline_name=package.get("deployment_name") or package.get("workflow_name") or "",
+                payload=initialisation_request.model_dump(),
+                parameters=parameters,
+                auto_restart=bool(request.auto_restart),
+            )
+            runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+            await _emit_runtime_phase_to_backend(
+                workspace_id=request.workspace_id,
+                deployment_id=deployment_id,
+                backend_url=request.backend_url,
+                backend_secret=request.backend_secret,
+                pipeline_id=pipeline_id,
+                running_status="pending",
+                runtime_phase="pipeline_initialised",
+                phase_message="Runtime pipeline initialised on edge runtime",
+                package=package,
+                runtime_deployment=runtime_deployment,
+            )
+
+        return {
+            "command_response": response_dict,
+            "pipeline_id": pipeline_id,
+            "package": package,
+        }
+    except Exception as error:
+        error_message = getattr(error, "public_message", None) or str(error)
+        try:
+            await _emit_runtime_phase_to_backend(
+                workspace_id=request.workspace_id,
+                deployment_id=deployment_id,
+                backend_url=request.backend_url,
+                backend_secret=request.backend_secret,
+                pipeline_id=request.existing_pipeline_id,
+                running_status="failure",
+                runtime_phase="failure",
+                phase_message="Runtime package initialisation failed",
+                package=package,
+                error_message=error_message,
+            )
+        except Exception as callback_error:
+            logger.warning(
+                "Failed to report runtime deployment initialisation failure. "
+                "deployment_id={} error={}",
+                deployment_id,
+                callback_error,
+            )
+        raise
 
 
 async def _get_runtime_deployment_status(
@@ -327,6 +436,8 @@ async def _get_runtime_deployment_status(
             pipeline_id=None,
             running_status="stopped",
             runtime_deployment=None,
+            runtime_phase="stopped",
+            phase_message="Runtime deployment is not registered in local cache",
         )
 
     pipeline_id = runtime_deployment["pipeline_id"]
@@ -335,6 +446,13 @@ async def _get_runtime_deployment_status(
         response_dict = _extract_command_response(response)
         report = response_dict.get("report") or {}
         running_status = _map_report_to_running_status(report)
+        runtime_deployment = (
+            pipeline_cache.update_runtime_deployment_parameters(
+                deployment_id,
+                {"last_runtime_status_at": datetime.now(timezone.utc).isoformat()},
+            )
+            or runtime_deployment
+        )
         return _build_runtime_deployment_response(
             deployment_id=deployment_id,
             workspace_id=workspace_id,
@@ -342,6 +460,8 @@ async def _get_runtime_deployment_status(
             running_status=running_status,
             report=report,
             runtime_deployment=runtime_deployment,
+            runtime_phase=_default_runtime_phase(running_status),
+            phase_message="Runtime deployment status collected from edge runtime",
         )
     except ProcessesManagerNotFoundError:
         try:
@@ -355,6 +475,8 @@ async def _get_runtime_deployment_status(
             running_status="not_found",
             runtime_deployment=runtime_deployment,
             error_message="Runtime deployment pipeline not found",
+            runtime_phase="pipeline_missing",
+            phase_message="Runtime deployment pipeline not found on edge runtime",
         )
     except ProcessesManagerClientError as error:
         return _build_runtime_deployment_response(
@@ -364,6 +486,8 @@ async def _get_runtime_deployment_status(
             running_status="failure",
             runtime_deployment=runtime_deployment,
             error_message=error.public_message or str(error),
+            runtime_phase="failure",
+            phase_message="Failed to fetch runtime deployment status from edge runtime",
         )
 
 
@@ -412,6 +536,13 @@ async def _report_runtime_status_to_backend(
         "running_status": status_payload.get("running_status"),
         "report": status_payload.get("report"),
         "error_message": status_payload.get("error_message"),
+        "deployment_revision": status_payload.get("deployment_revision"),
+        "package_digest": status_payload.get("package_digest"),
+        "workflow_digest": status_payload.get("workflow_digest"),
+        "model_bindings_digest": status_payload.get("model_bindings_digest"),
+        "runtime_phase": status_payload.get("runtime_phase"),
+        "phase_message": status_payload.get("phase_message"),
+        "observed_at": status_payload.get("observed_at"),
     }
     url = (
         f"{resolved_backend_url}/api/reef/workspaces/{workspace_id}"
@@ -426,6 +557,41 @@ async def _report_runtime_status_to_backend(
         ) as response:
             response.raise_for_status()
             await response.text()
+
+
+async def _emit_runtime_phase_to_backend(
+    *,
+    workspace_id: str,
+    deployment_id: str,
+    backend_url: Optional[str],
+    backend_secret: Optional[str],
+    pipeline_id: Optional[str],
+    running_status: str,
+    runtime_phase: str,
+    phase_message: str,
+    package: Optional[Dict[str, Any]] = None,
+    runtime_deployment: Optional[Dict[str, Any]] = None,
+    report: Optional[Dict[str, Any]] = None,
+    error_message: Optional[str] = None,
+) -> None:
+    await _report_runtime_status_to_backend(
+        workspace_id=workspace_id,
+        deployment_id=deployment_id,
+        backend_url=backend_url,
+        backend_secret=backend_secret,
+        status_payload=_build_runtime_deployment_response(
+            deployment_id=deployment_id,
+            workspace_id=workspace_id,
+            pipeline_id=pipeline_id,
+            running_status=running_status,
+            report=report,
+            runtime_deployment=runtime_deployment,
+            error_message=error_message,
+            runtime_phase=runtime_phase,
+            phase_message=phase_message,
+            package=package,
+        ),
+    )
 
 
 def register_runtime_package_routes(
@@ -618,6 +784,8 @@ def register_runtime_package_routes(
                 workspace_id=request.workspace_id,
                 pipeline_id=None,
                 running_status="stopped",
+                runtime_phase="stopped",
+                phase_message="Runtime deployment already stopped",
             )
 
         pipeline_id = existing["pipeline_id"]
@@ -645,6 +813,9 @@ def register_runtime_package_routes(
                 workspace_id=request.workspace_id,
                 pipeline_id=None,
                 running_status="stopped",
+                runtime_deployment=existing,
+                runtime_phase="stopped",
+                phase_message="Runtime deployment terminated on edge runtime",
             ),
             "command_response": _extract_command_response(response),
         }

@@ -160,6 +160,50 @@ class PipelineCache(SQLiteWrapper):
         self.terminate(deployment["pipeline_id"])
         return deployment
 
+    def update_runtime_deployment_parameters(
+        self,
+        deployment_id: str,
+        parameters: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        if not parameters:
+            return self.get_runtime_deployment(deployment_id)
+
+        connection: Optional[sqlite3.Connection] = None
+        try:
+            connection = sqlite3.connect(self._db_file_path, timeout=1)
+            cursor = connection.cursor()
+            rows = self.select(cursor=cursor)
+            target_row = None
+            for row in rows:
+                row_parameters = json.loads(row[self._col_parameters])
+                if row_parameters.get("deployment_id") == deployment_id:
+                    target_row = row
+                    merged_parameters = {**row_parameters, **parameters}
+                    target_row[self._col_parameters] = json.dumps(merged_parameters)
+                    target_row[self._col_updated_at] = int(time.time())
+                    break
+
+            if target_row is None:
+                logger.warning(
+                    "No runtime deployment found with deployment_id={} to update parameters",
+                    deployment_id,
+                )
+                cursor.close()
+                connection.close()
+                return None
+
+            self.delete(rows=[target_row], cursor=cursor)
+            self.insert(row=target_row, cursor=cursor)
+            connection.commit()
+            cursor.close()
+            connection.close()
+            return self.get_runtime_deployment(deployment_id)
+        except Exception as exc:
+            logger.debug("Failed to update runtime deployment parameters - %s", exc)
+            if connection is not None:
+                connection.rollback()
+            raise exc
+
     def terminate(self, pipeline_id: str):
         try:
             connection: sqlite3.Connection = sqlite3.connect(

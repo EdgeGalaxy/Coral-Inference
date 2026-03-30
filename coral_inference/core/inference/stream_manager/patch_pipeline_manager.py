@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from loguru import logger
 from inference.core.exceptions import (
+    ModelArtefactError,
     MissingApiKeyError,
     RoboflowAPINotAuthorizedError,
     RoboflowAPINotNotFoundError,
@@ -123,6 +124,20 @@ def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> Non
             error=error,
             public_error_message="Provided workflow configuration is not valid.",
             error_type=ErrorType.INVALID_PAYLOAD,
+        )
+    except ModelArtefactError as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message=f"Failed to prepare runtime model artifacts: {error}",
+            error_type=ErrorType.OPERATION_ERROR,
+        )
+    except Exception as error:
+        self._handle_error(
+            request_id=request_id,
+            error=error,
+            public_error_message=f"Unexpected runtime pipeline initialisation failure: {error}",
+            error_type=ErrorType.INTERNAL_ERROR,
         )
 
 
