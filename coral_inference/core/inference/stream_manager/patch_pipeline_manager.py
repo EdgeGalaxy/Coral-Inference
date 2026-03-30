@@ -252,9 +252,29 @@ def initialise_pipeline(
             is_open = bool(metrics_cfg.get("is_open", True))
             selected_fields = metrics_cfg.get("selected_fields") or []
             queue_size = metrics_cfg.get("queue_size", 1000)  # 默认1000
+            deployment_id = (
+                str(
+                    parsed_payload.processing_configuration.workflows_parameters.get(
+                        "deployment_id"
+                    )
+                    or ""
+                ).strip()
+                or None
+            )
+            gateway_id = (
+                str(
+                    parsed_payload.processing_configuration.workflows_parameters.get(
+                        "gateway_id"
+                    )
+                    or ""
+                ).strip()
+                or None
+            )
             if is_open:
                 metric_sink = MetricSink.init(
                     pipeline_id=pipeline_id,
+                    deployment_id=deployment_id,
+                    gateway_id=gateway_id,
                     selected_fields=selected_fields,
                     queue_size=queue_size,
                 )

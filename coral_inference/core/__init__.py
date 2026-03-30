@@ -11,6 +11,7 @@ from inference.core.interfaces.stream_manager.manager_app import (
 from coral_inference.core.models import utils as model_utils
 from coral_inference.core.models.utils import get_runtime_platform
 from coral_inference.core.models import rknn_base
+from coral_inference.core import runtime_package
 from coral_inference.core.inference.camera import patch_video_source
 from coral_inference.core.inference.stream_manager import patch_app
 from coral_inference.core.inference.stream_manager import patch_manager_client
@@ -50,6 +51,16 @@ else:
     )
 
 roboflow.get_from_url = model_utils.get_from_url
+roboflow.RoboflowInferenceModel.get_model_artifacts = (
+    runtime_package.extend_get_model_artifacts(
+        roboflow.RoboflowInferenceModel.get_model_artifacts
+    )
+)
+roboflow.OnnxRoboflowInferenceModel.download_model_artifacts_from_roboflow_api = (
+    runtime_package.extend_download_model_artifacts(
+        roboflow.OnnxRoboflowInferenceModel.download_model_artifacts_from_roboflow_api
+    )
+)
 sinks.InMemoryBufferSink.__init__ = patch_sinks.extend_init(
     sinks.InMemoryBufferSink.__init__
 )

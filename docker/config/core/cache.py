@@ -100,6 +100,18 @@ class PipelineCache(SQLiteWrapper):
         }
         return list(pipeline_id_mapper.values())
 
+    def _decode_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "pipeline_id": row[self._col_pipeline_id],
+            "restore_pipeline_id": row[self._col_restore_pipeline_id],
+            "payload": json.loads(row[self._col_payload_name]),
+            "parameters": json.loads(row[self._col_parameters]),
+            "pipeline_name": row[self._col_pipeline_name],
+            "auto_restart": bool(row[self._col_auto_restart]),
+            "updated_at": row[self._col_updated_at],
+            "created_at": row[self._col_created_at],
+        }
+
     def get(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
         rows = self.select()
         pipeline_id_mapper = {
@@ -127,6 +139,26 @@ class PipelineCache(SQLiteWrapper):
             for r in rows
         }
         return pipeline_id_mapper.get(pipeline_id)
+
+    def get_runtime_deployment(self, deployment_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.select()
+        for row in rows:
+            decoded_row = self._decode_row(row)
+            parameters = decoded_row.get("parameters") or {}
+            if parameters.get("deployment_id") == deployment_id:
+                return decoded_row
+        logger.debug(f"Runtime deployment {deployment_id} not found in cache")
+        return None
+
+    def terminate_deployment(self, deployment_id: str) -> Optional[Dict[str, Any]]:
+        deployment = self.get_runtime_deployment(deployment_id)
+        if deployment is None:
+            logger.warning(
+                f"No runtime deployment found with deployment_id={deployment_id} to terminate"
+            )
+            return None
+        self.terminate(deployment["pipeline_id"])
+        return deployment
 
     def terminate(self, pipeline_id: str):
         try:

@@ -19,6 +19,7 @@ from .routing_utils import (
 )
 from .stream.video_stream_routes import register_video_stream_routes
 from .pipeline.pipeline_routes import register_pipeline_routes
+from .pipeline.runtime_package_routes import register_runtime_package_routes
 from .monitor.monitor_routes import register_monitor_routes
 from .monitor.monitor_optimized_influxdb import setup_optimized_monitor_with_influxdb
 
@@ -134,6 +135,7 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
         logger.info("应用程序清理完成")
 
     register_pipeline_routes(app, stream_manager_client, pipeline_cache)
+    register_runtime_package_routes(app, stream_manager_client, pipeline_cache)
 
     register_monitor_routes(app)
 

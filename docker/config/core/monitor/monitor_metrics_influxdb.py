@@ -376,11 +376,20 @@ class InfluxDBMetricsCollector:
 
                 # 获取 pipeline 名称（如果有缓存）
                 pipeline_name = pipeline_cache_id
+                deployment_id = None
+                gateway_id = None
                 if self.pipeline_cache:
                     cache_info = self.pipeline_cache.get(pipeline_cache_id)
                     if cache_info:
                         pipeline_name = cache_info.get(
                             "pipeline_name", pipeline_cache_id
+                        )
+                        parameters = cache_info.get("parameters") or {}
+                        deployment_id = (
+                            str(parameters.get("deployment_id") or "").strip() or None
+                        )
+                        gateway_id = (
+                            str(parameters.get("gateway_id") or "").strip() or None
                         )
 
                 # 为每个数据源创建指标点
@@ -391,6 +400,8 @@ class InfluxDBMetricsCollector:
                     sources_metadata=valid_sources_metadata,
                     inference_throughput=inference_throughput,
                     timestamp=current_time,
+                    deployment_id=deployment_id,
+                    gateway_id=gateway_id,
                 )
 
                 # 添加到缓冲区
@@ -413,6 +424,8 @@ class InfluxDBMetricsCollector:
         sources_metadata: List[Dict],
         inference_throughput: float,
         timestamp: float,
+        deployment_id: Optional[str] = None,
+        gateway_id: Optional[str] = None,
     ) -> List[Point]:
         """创建 InfluxDB Point 对象"""
         points = []
@@ -423,6 +436,10 @@ class InfluxDBMetricsCollector:
         pipeline_point = pipeline_point.tag("pipeline_id", pipeline_id)
         pipeline_point = pipeline_point.tag("pipeline_name", pipeline_name)
         pipeline_point = pipeline_point.tag("level", "pipeline")  # 标记为 pipeline 级别
+        if deployment_id:
+            pipeline_point = pipeline_point.tag("deployment_id", deployment_id)
+        if gateway_id:
+            pipeline_point = pipeline_point.tag("gateway_id", gateway_id)
         pipeline_point = pipeline_point.field(
             "throughput", int(round(float(inference_throughput)))
         )
@@ -460,6 +477,10 @@ class InfluxDBMetricsCollector:
             point = point.tag("pipeline_name", pipeline_name)
             point = point.tag("source_id", str(source_id))
             point = point.tag("level", "source")  # 标记为 source 级别
+            if deployment_id:
+                point = point.tag("deployment_id", deployment_id)
+            if gateway_id:
+                point = point.tag("gateway_id", gateway_id)
 
             # 源状态作为 tag
             source_state = source_metadata.get("state", "unknown")

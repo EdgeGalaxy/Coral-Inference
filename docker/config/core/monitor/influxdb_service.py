@@ -405,6 +405,11 @@ class MetricsDataProcessor:
 
             # 获取分组标签列（从 group_by 参数中）
             group_by_tags = group_by or []
+            series_level_tags = {
+                str(k): str(v)
+                for k, v in (series.tags or {}).items()
+                if v is not None and str(v) != ""
+            }
 
             for row in series.values:
                 raw_t = row[time_index]
@@ -426,7 +431,7 @@ class MetricsDataProcessor:
                         continue
 
                 # 构建当前数据点的标签值
-                current_tags = {}
+                current_tags = dict(series_level_tags)
                 if group_by_tags:
                     # 优先使用 series.tags 中的标签值（当前系列的具体标签值）
                     if series.tags:
@@ -434,7 +439,7 @@ class MetricsDataProcessor:
                             if tag in series.tags:
                                 current_tags[tag] = str(series.tags[tag])
                     # 如果 series.tags 中没有，再从数据列中获取
-                    if not current_tags:
+                    if not any(tag in current_tags for tag in group_by_tags):
                         for tag in group_by_tags:
                             if tag in series.columns:
                                 tag_index = series.columns.index(tag)
@@ -455,6 +460,13 @@ class MetricsDataProcessor:
                                         "tags": series.tags_metadata
                                         or {},  # 所有可能的标签值
                                         "current_tags": current_tags,  # 当前数据点的具体标签值
+                                        "deployment_id": current_tags.get(
+                                            "deployment_id"
+                                        ),
+                                        "pipeline_id": current_tags.get(
+                                            "pipeline_id"
+                                        ),
+                                        "source_id": current_tags.get("source_id"),
                                         "metric": field,
                                         "series": series.name,
                                     },

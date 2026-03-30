@@ -54,12 +54,16 @@ class MetricSink:
     def init(
         cls,
         pipeline_id: str,
+        deployment_id: Optional[str] = None,
+        gateway_id: Optional[str] = None,
         selected_fields: Optional[List[str]] = None,
         measurement: str = "pipeline_metrics",
         queue_size: int = 1000,
     ) -> "MetricSink":
         return cls(
             pipeline_id=pipeline_id,
+            deployment_id=deployment_id,
+            gateway_id=gateway_id,
             selected_fields=selected_fields or [],
             measurement=measurement,
             queue_size=queue_size,
@@ -68,11 +72,15 @@ class MetricSink:
     def __init__(
         self,
         pipeline_id: str,
+        deployment_id: Optional[str],
+        gateway_id: Optional[str],
         selected_fields: List[str],
         measurement: str,
         queue_size: int = 1000,
     ):
         self._pipeline_id = pipeline_id
+        self._deployment_id = deployment_id
+        self._gateway_id = gateway_id
         self._selected_fields = selected_fields
         self._measurement = measurement
 
@@ -294,6 +302,10 @@ class MetricSink:
                     p = Point(self._measurement)
                     # tags
                     p = p.tag("pipeline_id", self._pipeline_id)
+                    if self._deployment_id:
+                        p = p.tag("deployment_id", self._deployment_id)
+                    if self._gateway_id:
+                        p = p.tag("gateway_id", self._gateway_id)
                     if source_id is not None:
                         p = p.tag("source_id", str(source_id))
                     # fields
