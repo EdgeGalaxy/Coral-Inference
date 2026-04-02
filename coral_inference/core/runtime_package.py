@@ -13,12 +13,24 @@ from inference.core.cache.model_artifacts import (
 from inference.core.exceptions import ModelArtefactError
 
 from coral_inference.core.log import logger
+from coral_inference.core.runtime_contract import (
+    RuntimePackageBinding,
+    RuntimePackageContract,
+)
 
 
 RUNTIME_MODEL_ENDPOINT_PREFIX = "coral-runtime"
 _RUNTIME_MODEL_BINDINGS: Dict[str, Dict[str, Any]] = {}
 _RUNTIME_DEPLOYMENTS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
+
+
+def _normalise_runtime_package_contract(package: Dict[str, Any]) -> Dict[str, Any]:
+    return RuntimePackageContract.model_validate(package).model_dump(exclude_none=True)
+
+
+def _normalise_runtime_binding_contract(binding: Dict[str, Any]) -> Dict[str, Any]:
+    return RuntimePackageBinding.model_validate(binding).model_dump(exclude_none=True)
 
 
 def is_runtime_model_endpoint(endpoint: Optional[str]) -> bool:
@@ -37,13 +49,17 @@ def make_runtime_model_endpoint(binding: Dict[str, Any]) -> str:
 def get_runtime_model_binding(endpoint: str) -> Optional[Dict[str, Any]]:
     with _LOCK:
         binding = _RUNTIME_MODEL_BINDINGS.get(endpoint)
-        return copy.deepcopy(binding) if binding else None
+        return _normalise_runtime_binding_contract(copy.deepcopy(binding)) if binding else None
 
 
 def get_runtime_deployment(deployment_id: str) -> Optional[Dict[str, Any]]:
     with _LOCK:
         deployment = _RUNTIME_DEPLOYMENTS.get(deployment_id)
-        return copy.deepcopy(deployment) if deployment else None
+        return (
+            _normalise_runtime_package_contract(copy.deepcopy(deployment))
+            if deployment
+            else None
+        )
 
 
 def _build_class_names(environment: Dict[str, Any]) -> List[str]:
@@ -165,7 +181,11 @@ def _normalise_environment(binding: Dict[str, Any]) -> Dict[str, Any]:
         "PREPROCESSING": json.dumps(
             artifact_manifest.get("preprocessing") or artifact_manifest.get("preproc") or {}
         ),
-        "CLASS_MAP": artifact_manifest.get("class_map") or {},
+        "CLASS_MAP": (
+            artifact_manifest.get("class_mapping")
+            or artifact_manifest.get("class_map")
+            or {}
+        ),
         "COLORS": artifact_manifest.get("colors") or {},
         "BATCH_SIZE": artifact_manifest.get("batch_size") or 8,
     }
@@ -228,6 +248,7 @@ def materialize_runtime_workflow_specification(
 
 
 def register_runtime_package(package: Dict[str, Any]) -> Dict[str, Any]:
+    package = _normalise_runtime_package_contract(package)
     deployment_id = str(package.get("deployment_id") or "").strip()
     if not deployment_id:
         raise ValueError("deployment_id is required")
@@ -244,13 +265,16 @@ def register_runtime_package(package: Dict[str, Any]) -> Dict[str, Any]:
     registered_package = copy.deepcopy(package)
     registered_package["workflow_spec"] = workflow_spec
     registered_package["model_bindings"] = model_bindings
+    registered_package = _normalise_runtime_package_contract(registered_package)
 
     with _LOCK:
         _RUNTIME_DEPLOYMENTS[deployment_id] = registered_package
         for binding in model_bindings:
             runtime_endpoint = binding.get("runtime_model_endpoint")
             if runtime_endpoint:
-                _RUNTIME_MODEL_BINDINGS[runtime_endpoint] = binding
+                _RUNTIME_MODEL_BINDINGS[runtime_endpoint] = _normalise_runtime_binding_contract(
+                    binding
+                )
 
     return copy.deepcopy(registered_package)
 

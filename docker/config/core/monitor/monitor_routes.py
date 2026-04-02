@@ -12,6 +12,7 @@ from inference.core.interfaces.http.http_api import with_route_exceptions_async
 
 from .influxdb_service import influx_client, metrics_processor, InfluxQueryParams
 from .custom_metrics_routes import register_custom_metrics_routes
+from .metrics_response_builder import build_metrics_response_from_summary
 from .monitor_optimized_influxdb import OptimizedPipelineMonitorWithInfluxDB
 from ..routing_utils import get_monitor
 
@@ -254,101 +255,10 @@ def register_monitor_routes(app: FastAPI) -> None:
                     aggregation_window="10s",  # 可以根据时间范围动态调整
                     level=level or "pipeline",
                 )
-
-                logger.info('summary', summary)
-
-                # 转换 InfluxDB 数据为前端需要的格式
-                if summary and summary.get("data"):
-                    rows = summary["data"]
-                    # 按时间桶聚合
-                    buckets = sorted({r.get("time") for r in rows if r.get("time")})
-                    dates = buckets[:]
-                    datasets = []
-
-                    if (level or "pipeline") == "pipeline":
-                        # 期望每个 bucket 有一条记录
-                        bucket_map = {r.get("time"): r for r in rows if r.get("time")}
-                        throughput_data = [
-                            float(bucket_map.get(ts, {}).get("avg_throughput", 0) or 0)
-                            for ts in dates
-                        ]
-                        source_count_data = [
-                            float(
-                                bucket_map.get(ts, {}).get("avg_source_count", 0) or 0
-                            )
-                            for ts in dates
-                        ]
-                        e2e_latency_data = [
-                            float(bucket_map.get(ts, {}).get("avg_e2e_latency", 0) or 0)
-                            for ts in dates
-                        ]
-                        datasets.append({"name": "Throughput", "data": throughput_data})
-                        datasets.append(
-                            {"name": "Source Count", "data": source_count_data}
-                        )
-                        datasets.append(
-                            {"name": "E2E Latency", "data": e2e_latency_data}
-                        )
-                    else:
-                        rows_by_bucket = {}
-                        for r in rows:
-                            ts = r.get("time")
-                            if not ts:
-                                continue
-                            rows_by_bucket.setdefault(ts, []).append(r)
-
-                        sources = sorted(
-                            {
-                                str(r.get("source_id"))
-                                for r in rows
-                                if r.get("source_id") is not None
-                            }
-                        )
-                        idx = {
-                            (r.get("time"), str(r.get("source_id"))): r
-                            for r in rows
-                            if r.get("time") and r.get("source_id") is not None
-                        }
-
-                        for sid in sources:
-                            frame_decoding = []
-                            inference_lat = []
-                            e2e_lat = []
-                            for ts in dates:
-                                rec = idx.get((ts, sid)) or {}
-                                frame_decoding.append(
-                                    float(
-                                        rec.get("avg_frame_decoding_latency", 0)
-                                        or 0
-                                    )
-                                )
-                                inference_lat.append(
-                                    float(rec.get("avg_inference_latency", 0) or 0)
-                                )
-                                e2e_lat.append(
-                                    float(rec.get("avg_e2e_latency", 0) or 0)
-                                )
-
-                                datasets.append(
-                                    {
-                                        "name": f"Frame Decoding ({sid})",
-                                        "data": frame_decoding,
-                                    }
-                                )
-                                datasets.append(
-                                    {
-                                        "name": f"Inference Latency ({sid})",
-                                        "data": inference_lat,
-                                    }
-                                )
-                                datasets.append(
-                                    {"name": f"E2E Latency ({sid})", "data": e2e_lat}
-                                )
-
-                    metrics = {"dates": dates, "datasets": datasets}
-                else:
-                    # 没有数据
-                    metrics = {"dates": [], "datasets": []}
+                metrics = build_metrics_response_from_summary(
+                    summary=summary,
+                    level=level,
+                )
             else:
                 # 如果没有启用 InfluxDB，返回空数据或模拟数据
                 logger.warning(

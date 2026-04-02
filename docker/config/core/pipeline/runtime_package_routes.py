@@ -34,9 +34,11 @@ from coral_inference.core.runtime_package import (
     get_runtime_deployment,
     register_runtime_package,
 )
+from coral_inference.core.runtime_contract import normalize_runtime_status_report
 from coral_inference.core.log import logger
 
 from ..cache import PipelineCache
+from ..monitor.metrics_response_builder import build_metrics_response_from_summary
 from ..routing_utils import get_monitor
 
 
@@ -96,6 +98,7 @@ def _default_runtime_phase(running_status: str) -> str:
 
 
 def _map_report_to_running_status(report: Optional[Dict[str, Any]]) -> str:
+    report = normalize_runtime_status_report(report)
     if not report:
         return "pending"
     sources_metadata = report.get("sources_metadata") or []
@@ -133,6 +136,7 @@ def _build_runtime_deployment_response(
     observed_at: Optional[str] = None,
     package: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    report = normalize_runtime_status_report(report)
     identity_fields = _extract_runtime_identity_fields(
         package=package,
         runtime_deployment=runtime_deployment,
@@ -202,100 +206,10 @@ async def _get_runtime_deployment_metrics(
         aggregation_window="10s",
         level=level or "pipeline",
     )
-    if not summary or not summary.get("data"):
-        return {"dates": [], "datasets": []}
-
-    rows = summary["data"]
-    dates = sorted({row.get("time") for row in rows if row.get("time")})
-    datasets: List[Dict[str, Any]] = []
-
-    if (level or "pipeline") == "pipeline":
-        bucket_map = {row.get("time"): row for row in rows if row.get("time")}
-        datasets.append(
-            {
-                "name": "Throughput",
-                "data": [
-                    float(bucket_map.get(ts, {}).get("avg_throughput", 0) or 0)
-                    for ts in dates
-                ],
-            }
-        )
-        datasets.append(
-            {
-                "name": "Source Count",
-                "data": [
-                    float(bucket_map.get(ts, {}).get("avg_source_count", 0) or 0)
-                    for ts in dates
-                ],
-            }
-        )
-        datasets.append(
-            {
-                "name": "E2E Latency",
-                "data": [
-                    float(bucket_map.get(ts, {}).get("avg_e2e_latency", 0) or 0)
-                    for ts in dates
-                ],
-            }
-        )
-        return {"dates": dates, "datasets": datasets}
-
-    source_rows = {
-        (row.get("time"), str(row.get("source_id"))): row
-        for row in rows
-        if row.get("time") and row.get("source_id") is not None
-    }
-    source_ids = sorted(
-        {
-            str(row.get("source_id"))
-            for row in rows
-            if row.get("source_id") is not None
-        }
+    return build_metrics_response_from_summary(
+        summary=summary,
+        level=level,
     )
-    for source_id in source_ids:
-        datasets.append(
-            {
-                "name": f"Frame Decoding ({source_id})",
-                "data": [
-                    float(
-                        (
-                            source_rows.get((ts, source_id), {}) or {}
-                        ).get("avg_frame_decoding_latency", 0)
-                        or 0
-                    )
-                    for ts in dates
-                ],
-            }
-        )
-        datasets.append(
-            {
-                "name": f"Inference Latency ({source_id})",
-                "data": [
-                    float(
-                        (source_rows.get((ts, source_id), {}) or {}).get(
-                            "avg_inference_latency", 0
-                        )
-                        or 0
-                    )
-                    for ts in dates
-                ],
-            }
-        )
-        datasets.append(
-            {
-                "name": f"E2E Latency ({source_id})",
-                "data": [
-                    float(
-                        (source_rows.get((ts, source_id), {}) or {}).get(
-                            "avg_e2e_latency", 0
-                        )
-                        or 0
-                    )
-                    for ts in dates
-                ],
-            }
-        )
-    return {"dates": dates, "datasets": datasets}
 
 
 async def _initialise_runtime_deployment(
@@ -444,7 +358,7 @@ async def _get_runtime_deployment_status(
     try:
         response = await stream_manager_client.get_status(pipeline_id=pipeline_id)
         response_dict = _extract_command_response(response)
-        report = response_dict.get("report") or {}
+        report = normalize_runtime_status_report(response_dict.get("report") or {})
         running_status = _map_report_to_running_status(report)
         runtime_deployment = (
             pipeline_cache.update_runtime_deployment_parameters(
@@ -534,7 +448,7 @@ async def _report_runtime_status_to_backend(
     payload = {
         "pipeline_id": status_payload.get("pipeline_id"),
         "running_status": status_payload.get("running_status"),
-        "report": status_payload.get("report"),
+        "report": normalize_runtime_status_report(status_payload.get("report")),
         "error_message": status_payload.get("error_message"),
         "deployment_revision": status_payload.get("deployment_revision"),
         "package_digest": status_payload.get("package_digest"),

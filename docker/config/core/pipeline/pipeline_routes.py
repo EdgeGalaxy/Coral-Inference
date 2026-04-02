@@ -22,12 +22,41 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
     InitialisePipelinePayload,
     ConsumeResultsPayload,
 )
+from coral_inference.core.runtime_contract import normalize_runtime_status_report
 
 from ..cache import PipelineCache
 from ..pipeline.pipeline_utils import (
     download_videos_parallel,
     cleanup_pipeline_videos,
 )
+
+
+def _extract_status_response_dict(
+    response: InferencePipelineStatusResponse | Dict[str, Any],
+) -> Dict[str, Any]:
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    if hasattr(response, "dict"):
+        return response.dict()
+    return dict(response)
+
+
+def _normalise_pipeline_status_response(
+    response: InferencePipelineStatusResponse | Dict[str, Any],
+) -> InferencePipelineStatusResponse:
+    response_dict = _extract_status_response_dict(response)
+    context = response_dict.get("context") or {}
+    if hasattr(context, "model_dump"):
+        context = context.model_dump()
+    elif hasattr(context, "dict"):
+        context = context.dict()
+    else:
+        context = dict(context) if not isinstance(context, dict) else context
+    return InferencePipelineStatusResponse(
+        status=response_dict["status"],
+        context=context,
+        report=normalize_runtime_status_report(response_dict.get("report") or {}),
+    )
 
 
 def register_pipeline_routes(
@@ -116,7 +145,8 @@ def register_pipeline_routes(
     @with_route_exceptions_async
     async def get_status(pipeline_id: str) -> InferencePipelineStatusResponse:
         real_id = _map_pipeline_id(pipeline_id)
-        return await stream_manager_client.get_status(pipeline_id=real_id)
+        response = await stream_manager_client.get_status(pipeline_id=real_id)
+        return _normalise_pipeline_status_response(response)
 
     @app.post(
         "/inference_pipelines/{pipeline_id}/pause",
