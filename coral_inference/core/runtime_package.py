@@ -58,7 +58,104 @@ def _build_class_names(environment: Dict[str, Any]) -> List[str]:
     return [str(key) for key in class_map.keys()]
 
 
+def _normalise_model_metadata(binding: Dict[str, Any]) -> Dict[str, Any]:
+    model_metadata = copy.deepcopy(binding.get("model_metadata") or {})
+    if not model_metadata:
+        model_asset = copy.deepcopy(binding.get("model_asset") or {})
+        standardized_metadata = model_asset.get("standardized_metadata") or {}
+        if isinstance(standardized_metadata, dict) and standardized_metadata:
+            model_metadata = standardized_metadata
+        else:
+            runtime_environment = copy.deepcopy(binding.get("runtime_environment") or {})
+            preprocessing = runtime_environment.get("PREPROCESSING") or {}
+            class_mapping = runtime_environment.get("CLASS_MAP") or {}
+            model_metadata = {
+                "model_id": binding.get("model_id"),
+                "model_name": binding.get("model_name"),
+                "model_title": binding.get("model_title"),
+                "task_type": binding.get("task_type"),
+                "framework": binding.get("framework") or binding.get("model_type"),
+                "selected_runtime": binding.get("selected_runtime"),
+                "source": {
+                    "source_type": binding.get("source_type"),
+                    "source_model_asset_id": binding.get("source_model_asset_id"),
+                    "source_version_id": binding.get("source_version_id"),
+                },
+                "dataset": copy.deepcopy(binding.get("dataset") or {}),
+                "class_mapping": class_mapping if isinstance(class_mapping, dict) else {},
+                "preprocessing": preprocessing if isinstance(preprocessing, dict) else {},
+                "metrics_summary": copy.deepcopy(binding.get("metrics_summary") or {}),
+                "label_schema": copy.deepcopy(binding.get("label_schema") or {}),
+                "io_schema": copy.deepcopy(binding.get("io_schema") or {}),
+                "metric_schema": copy.deepcopy(binding.get("metric_schema") or {}),
+                "postprocessing": copy.deepcopy(binding.get("postprocessing") or {}),
+                "runtime_profile": {
+                    "supported_runtimes": copy.deepcopy(binding.get("supported_runtimes") or []),
+                    "preferred_runtime": binding.get("preferred_runtime"),
+                    "artifact_by_runtime": copy.deepcopy(binding.get("artifact_by_runtime") or {}),
+                },
+            }
+
+    source = copy.deepcopy(model_metadata.get("source") or {})
+    if binding.get("source_type") is not None:
+        source.setdefault("source_type", binding.get("source_type"))
+    if binding.get("source_model_asset_id") is not None:
+        source.setdefault("source_model_asset_id", binding.get("source_model_asset_id"))
+    if binding.get("source_version_id") is not None:
+        source.setdefault("source_version_id", binding.get("source_version_id"))
+    if source:
+        model_metadata["source"] = source
+
+    model_metadata.setdefault("selected_runtime", binding.get("selected_runtime"))
+    reference_profile = copy.deepcopy(binding.get("reference_profile") or {})
+    model_metadata["execution_reference"] = {
+        "model_reference": binding.get("model_reference"),
+        "model_reference_type": reference_profile.get("primary_reference_kind"),
+        "asset_reference": reference_profile.get("asset_reference"),
+        "requested_binding_ref": reference_profile.get("requested_binding_ref"),
+        "effective_binding_ref": (
+            reference_profile.get("effective_binding_ref") or binding.get("binding_ref")
+        ),
+        "binding_type": binding.get("binding_type"),
+        "binding_ref_changed": bool(reference_profile.get("binding_ref_changed")),
+        "resolution_source": reference_profile.get("resolution_source"),
+        "reference_profile": reference_profile if reference_profile else None,
+    }
+    return model_metadata
+
+
 def _normalise_environment(binding: Dict[str, Any]) -> Dict[str, Any]:
+    runtime_environment = copy.deepcopy(binding.get("runtime_environment") or {})
+    if runtime_environment:
+        preprocessing = runtime_environment.get("PREPROCESSING") or {}
+        if isinstance(preprocessing, str):
+            try:
+                preprocessing = json.loads(preprocessing)
+            except Exception:
+                preprocessing = {}
+        return {
+            "PREPROCESSING": json.dumps(preprocessing),
+            "CLASS_MAP": runtime_environment.get("CLASS_MAP") or {},
+            "COLORS": runtime_environment.get("COLORS") or {},
+            "BATCH_SIZE": runtime_environment.get("BATCH_SIZE") or 8,
+        }
+
+    model_asset = copy.deepcopy(binding.get("model_asset") or {})
+    model_asset_environment = model_asset.get("environment") or {}
+    if model_asset_environment:
+        preprocessing = model_asset_environment.get("PREPROCESSING") or {}
+        if isinstance(preprocessing, str):
+            try:
+                preprocessing = json.loads(preprocessing)
+            except Exception:
+                preprocessing = {}
+        return {
+            "PREPROCESSING": json.dumps(preprocessing),
+            "CLASS_MAP": model_asset_environment.get("CLASS_MAP") or {},
+            "COLORS": model_asset_environment.get("COLORS") or {},
+            "BATCH_SIZE": model_asset_environment.get("BATCH_SIZE") or 8,
+        }
+
     environment = copy.deepcopy(binding.get("model_environment") or {})
     if environment:
         return environment
@@ -74,15 +171,44 @@ def _normalise_environment(binding: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _normalise_artifact_by_runtime(binding: Dict[str, Any]) -> Dict[str, Any]:
+    artifact_by_runtime = copy.deepcopy(binding.get("artifact_by_runtime") or {})
+    model_asset = copy.deepcopy(binding.get("model_asset") or {})
+    runtime_profile = model_asset.get("runtime_profile") or {}
+    for runtime_name, uri in (runtime_profile.get("artifact_by_runtime") or {}).items():
+        if runtime_name and uri and runtime_name not in artifact_by_runtime:
+            artifact_by_runtime[runtime_name] = uri
+
+    if artifact_by_runtime:
+        return artifact_by_runtime
+
+    for artifact in model_asset.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        runtime_name = artifact.get("runtime")
+        uri = artifact.get("uri")
+        if runtime_name and uri:
+            artifact_by_runtime[str(runtime_name)] = uri
+    return artifact_by_runtime
+
+
 def materialize_runtime_workflow_specification(
     specification: Dict[str, Any],
     model_bindings: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    binding_by_ref = {
-        binding.get("binding_ref"): binding
-        for binding in model_bindings
-        if binding.get("binding_ref")
-    }
+    binding_by_ref: Dict[str, Dict[str, Any]] = {}
+    for binding in model_bindings:
+        if not isinstance(binding, dict):
+            continue
+        reference_profile = binding.get("reference_profile") or {}
+        for reference in (
+            binding.get("model_reference"),
+            reference_profile.get("asset_reference"),
+            reference_profile.get("requested_binding_ref"),
+            binding.get("binding_ref"),
+        ):
+            if reference:
+                binding_by_ref[reference] = binding
 
     def _replace(value: Any) -> Any:
         if isinstance(value, dict):
@@ -107,6 +233,9 @@ def register_runtime_package(package: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("deployment_id is required")
 
     model_bindings = copy.deepcopy(package.get("model_bindings") or [])
+    for binding in model_bindings:
+        if isinstance(binding, dict):
+            binding["model_metadata"] = _normalise_model_metadata(binding)
     workflow_spec = materialize_runtime_workflow_specification(
         specification=package.get("workflow_spec") or {},
         model_bindings=model_bindings,
@@ -177,7 +306,7 @@ def cache_runtime_model_artifacts(model: Any) -> bool:
         return False
 
     selected_runtime = binding.get("selected_runtime")
-    artifact_by_runtime = copy.deepcopy(binding.get("artifact_by_runtime") or {})
+    artifact_by_runtime = _normalise_artifact_by_runtime(binding)
     primary_artifact_uri = binding.get("artifact_uri")
     if selected_runtime and primary_artifact_uri:
         artifact_by_runtime[selected_runtime] = primary_artifact_uri
@@ -187,6 +316,11 @@ def cache_runtime_model_artifacts(model: Any) -> bool:
         raise ModelArtefactError(
             f"Runtime package model {model.endpoint} missing environment metadata"
         )
+    model_metadata = _normalise_model_metadata(binding)
+    if not environment.get("CLASS_MAP") and isinstance(
+        model_metadata.get("class_mapping"), dict
+    ):
+        environment["CLASS_MAP"] = dict(model_metadata["class_mapping"])
 
     class_names = _build_class_names(environment)
 
@@ -234,6 +368,11 @@ def cache_runtime_model_artifacts(model: Any) -> bool:
     save_json_in_cache(
         content=environment,
         file="environment.json",
+        model_id=model.endpoint,
+    )
+    save_json_in_cache(
+        content=model_metadata,
+        file="model_metadata.json",
         model_id=model.endpoint,
     )
     if class_names:
