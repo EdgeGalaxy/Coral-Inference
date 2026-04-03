@@ -1,0 +1,12 @@
+{
+  "PREPROCESSING": "{\"resize\": {\"width\": 640, \"height\": 640, \"format\": \"Stretch to\"}}",
+  "CLASS_MAP": {
+    "0": "helmet",
+    "1": "person"
+  },
+  "COLORS": {
+    "0": "#ffcc00",
+    "1": "#00ccff"
+  },
+  "BATCH_SIZE": 1
+}

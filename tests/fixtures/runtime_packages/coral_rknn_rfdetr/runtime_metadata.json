@@ -1,0 +1,6 @@
+{
+  "schema_version": "v1",
+  "task_type": "object-detection",
+  "framework": "rfdetr",
+  "backend": "rknn"
+}

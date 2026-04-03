@@ -15,6 +15,9 @@ supervisor = "^4.2.5"
 influxdb3-python = "^0.14.0"
 asyncer = "^0.0.9"
 
+[tool.poetry.scripts]
+coral-inference = "coral_inference.cli.main:main"
+
 
 [tool.poetry.group.npu]
 optional = true

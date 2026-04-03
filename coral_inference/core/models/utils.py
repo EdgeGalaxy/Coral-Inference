@@ -33,16 +33,20 @@ class RknnInferenceSession:
 
     def run(self, output_names, input_feed: dict, run_options=None) -> np.ndarray:
         _inputs = input_feed[self.input_name]
-        inputs = (
-            np.array(_inputs)
-            if isinstance(_inputs, list)
-            else _inputs[np.newaxis, :, :, :]
-        )
-        outputs = self.rknn_session.inference(inputs=inputs)[0]
-        predictions = (
-            np.squeeze(outputs, axis=-1) if len(outputs.shape) > 3 else outputs
-        )
-        return [predictions]
+        if isinstance(_inputs, list):
+            inputs = np.array(_inputs)
+        elif isinstance(_inputs, np.ndarray) and _inputs.ndim == 4:
+            inputs = _inputs
+        else:
+            inputs = _inputs[np.newaxis, :, :, :]
+        outputs = self.rknn_session.inference(inputs=inputs)
+        normalized_outputs = []
+        for output in outputs:
+            if len(output.shape) > 3 and output.shape[-1] == 1:
+                normalized_outputs.append(np.squeeze(output, axis=-1))
+            else:
+                normalized_outputs.append(output)
+        return normalized_outputs
 
 
 def get_runtime_platform():

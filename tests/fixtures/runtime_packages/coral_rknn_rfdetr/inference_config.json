@@ -1,0 +1,8 @@
+{
+  "network_input": {
+    "training_input_size": {
+      "width": 640,
+      "height": 640
+    }
+  }
+}

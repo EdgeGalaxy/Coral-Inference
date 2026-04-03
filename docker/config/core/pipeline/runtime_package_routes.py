@@ -29,7 +29,7 @@ from coral_inference.core.env import (
     CORAL_BACKEND_PACKAGE_TIMEOUT,
     CORAL_BACKEND_URL,
 )
-from coral_inference.core.runtime_package import (
+from coral_inference.runtime import (
     build_initialise_payload_from_runtime_package,
     get_runtime_deployment,
     register_runtime_package,

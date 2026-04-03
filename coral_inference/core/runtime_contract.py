@@ -6,7 +6,10 @@ from pydantic import BaseModel, Field, field_validator
 class RuntimeCompatibilityProfile(BaseModel):
     supported_runtimes: List[str] = Field(default_factory=list)
     preferred_runtime: Optional[str] = None
-    artifact_by_runtime: Dict[str, str] = Field(default_factory=dict)
+
+
+class TrainingArtifactRuntimeProfile(RuntimeCompatibilityProfile):
+    weight_index_by_runtime: Dict[str, str] = Field(default_factory=dict)
 
 
 class ArtifactManifestDescriptor(BaseModel):
@@ -32,7 +35,9 @@ class TrainingArtifactManifest(BaseModel):
     metric_schema: Dict[str, Any] = Field(default_factory=dict)
     postprocessing: Dict[str, Any] = Field(default_factory=dict)
     artifacts: List[ArtifactManifestDescriptor] = Field(default_factory=list)
-    runtime: RuntimeCompatibilityProfile = Field(default_factory=RuntimeCompatibilityProfile)
+    runtime: TrainingArtifactRuntimeProfile = Field(
+        default_factory=TrainingArtifactRuntimeProfile
+    )
     metrics_summary: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -116,8 +121,6 @@ class RuntimePackageBinding(BaseModel):
     source_version_id: Optional[int] = None
     artifact_manifest_version: Optional[str] = None
     inference_target: Optional[str] = None
-    artifact_uri: Optional[str] = None
-    artifact_by_runtime: Dict[str, str] = Field(default_factory=dict)
     artifact_manifest: TrainingArtifactManifest = Field(default_factory=TrainingArtifactManifest)
     supported_runtimes: List[str] = Field(default_factory=list)
     preferred_runtime: Optional[str] = None
@@ -128,7 +131,6 @@ class RuntimePackageBinding(BaseModel):
     metrics_summary: Dict[str, Any] = Field(default_factory=dict)
     dataset: Dict[str, Any] = Field(default_factory=dict)
     model_metadata: Optional[RuntimePackageModelMetadata] = None
-    runtime_artifacts: List[ArtifactManifestDescriptor] = Field(default_factory=list)
     model_asset: Optional[RuntimePackageModelAsset] = None
     runtime_model_endpoint: Optional[str] = None
 
