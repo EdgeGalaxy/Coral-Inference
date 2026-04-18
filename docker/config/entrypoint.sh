@@ -3,11 +3,21 @@
 # 设置错误时退出
 set -e
 
+# 加载与脚本同目录下的 .env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/.env"
+if [ -f "${ENV_FILE}" ]; then
+    echo "Loading environment from ${ENV_FILE}"
+    set -a
+    . "${ENV_FILE}"
+    set +a
+fi
+
 # 设置环境变量
 export HOST=${HOST:-0.0.0.0}
 export PORT=${PORT:-9001}
 export ENABLE_STREAM_API=${ENABLE_STREAM_API:-true}
-export PWD=${PWD:-/app}
+export PWD=${PWD:-${SCRIPT_DIR}}
 # 禁用推理路由
 export LEGACY_ROUTE_ENABLED=False
 export DISABLE_VERSION_CHECK=True
