@@ -40,6 +40,7 @@ class RuntimeModelBinding(BaseModel):
     package_files_snapshot: List[RuntimePackageFile] = Field(default_factory=list)
     supported_runtimes: List[str] = Field(default_factory=list)
     preferred_runtime: Optional[str] = None
+    runtime_model_endpoint: Optional[str] = None
 
 
 class RuntimeLockfile(BaseModel):

@@ -41,6 +41,7 @@ from coral_inference.core.inference.camera.webrtc_manager import (
 )
 from coral_inference.core.inference.stream.video_sink import TimeBasedVideoSink
 from coral_inference.core.inference.stream.metric_sink import MetricSink
+from coral_inference.runtime.compat import register_runtime_model_bindings
 
 
 def offer(self: InferencePipelineManager, request_id: str, payload: dict) -> None:
@@ -304,6 +305,15 @@ def initialise_pipeline(
 
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
+
+        runtime_model_bindings = (
+            parsed_payload.processing_configuration.workflows_parameters.get(
+                "model_bindings"
+            )
+            or []
+        )
+        if runtime_model_bindings:
+            register_runtime_model_bindings(runtime_model_bindings)
 
         self._inference_pipeline = InferencePipeline.init_with_workflow(
             video_reference=parsed_payload.video_configuration.video_reference,

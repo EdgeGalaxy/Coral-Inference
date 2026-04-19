@@ -12,7 +12,10 @@ _PRIMARY_FILE_HANDLES_BY_BACKEND = {
     "mediapipe": {"model.task"},
     "rknn": {"weights.rknn"},
 }
-_INFERENCE_MODELS_REQUIRED_SIDECAR_FILES = {"inference_config.json"}
+_INFERENCE_MODELS_REQUIRED_SIDECAR_FILES = {
+    "class_names.txt",
+    "inference_config.json",
+}
 _CORAL_RKNN_REQUIRED_FILES = {
     "weights.rknn",
     "class_names.txt",

@@ -26,7 +26,6 @@ class _CoralRuntimeInferenceModelsMixin:
     runtime_task_type: Optional[str] = None
 
     def __init__(self, model_id: str, api_key: Optional[str] = None, **kwargs):
-        super().__init__()
         binding_payload = get_runtime_model_binding(model_id)
         if not binding_payload:
             raise ModelArtefactError(

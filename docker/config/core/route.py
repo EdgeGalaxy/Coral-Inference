@@ -19,7 +19,11 @@ from .routing_utils import (
 )
 from .stream.video_stream_routes import register_video_stream_routes
 from .pipeline.pipeline_routes import register_pipeline_routes
-from .pipeline.runtime_package_routes import register_runtime_package_routes
+from .pipeline.runtime_package_routes import (
+    register_runtime_package_routes,
+    _get_runtime_deployment_status,
+    _report_runtime_status_to_backend,
+)
 from .monitor.monitor_routes import register_monitor_routes
 from .monitor.monitor_optimized_influxdb import setup_optimized_monitor_with_influxdb
 
@@ -43,10 +47,70 @@ def init_app(app: FastAPI, stream_manager_client: StreamManagerClient):
                     f"fetch pipelines data: {pipelines} & start restore pipeline cache!"
                 )
                 await pipeline_cache.restore()
+                asyncio.create_task(_sync_restored_runtime_deployments_with_retry())
 
                 # 启动pipeline结果监控 - 使用新的优化监控器
                 await start_monitor_with_pipelines()
                 break
+
+    async def _sync_one_runtime_deployment(decoded: dict) -> None:
+        params = decoded.get("parameters") or {}
+        deployment_id = params.get("deployment_id")
+        workspace_id = params.get("workspace_id")
+        if not deployment_id or not workspace_id:
+            return
+        status = await _get_runtime_deployment_status(
+            deployment_id=deployment_id,
+            workspace_id=workspace_id,
+            stream_manager_client=stream_manager_client,
+            pipeline_cache=pipeline_cache,
+        )
+        await _report_runtime_status_to_backend(
+            workspace_id=workspace_id,
+            deployment_id=deployment_id,
+            status_payload=status,
+        )
+        logger.info(
+            "Synced restored runtime deployment to backend. deployment_id={} pipeline_id={}",
+            deployment_id,
+            status.get("pipeline_id"),
+        )
+
+    async def _sync_restored_runtime_deployments_with_retry() -> None:
+        # 每个 deployment 独立跟踪是否已同步成功
+        rows = pipeline_cache.select()
+        pending = []
+        for row in rows:
+            try:
+                decoded = pipeline_cache._decode_row(row)
+                params = decoded.get("parameters") or {}
+                if params.get("deployment_id") and params.get("workspace_id"):
+                    pending.append(decoded)
+            except Exception:
+                pass
+
+        if not pending:
+            return
+
+        delay = 5
+        while pending:
+            still_pending = []
+            for decoded in pending:
+                try:
+                    await _sync_one_runtime_deployment(decoded)
+                except Exception as e:
+                    deployment_id = (decoded.get("parameters") or {}).get("deployment_id")
+                    logger.warning(
+                        "Runtime deployment sync failed, will retry in {}s. deployment_id={} error={}",
+                        delay,
+                        deployment_id,
+                        e,
+                    )
+                    still_pending.append(decoded)
+            pending = still_pending
+            if pending:
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 300)  # 指数退避，最长 5 分钟
 
     async def start_monitor_with_pipelines():
         """启动带有 pipeline 支持的监控器"""

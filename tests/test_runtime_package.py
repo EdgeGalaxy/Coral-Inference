@@ -21,6 +21,7 @@ from coral_inference.runtime import (
     get_runtime_deployment,
     get_runtime_model_binding,
     materialize_runtime_workflow_specification,
+    register_runtime_model_bindings,
     register_runtime_package,
 )
 from coral_inference.runtime.capabilities import (
@@ -42,6 +43,7 @@ from coral_inference.runtime.rknn_adapters import (
     CoralRuntimeRFDETRRKNNObjectDetectionAdapter,
     get_runtime_rknn_adapter,
 )
+from coral_inference.runtime.adapters import CoralRuntimeObjectDetectionAdapter
 
 
 def test_materialize_runtime_workflow_specification_uses_reference_profile_refs():
@@ -108,6 +110,43 @@ def test_default_runtime_patch_state_in_fresh_process():
 
     assert state["default_dispatch_installed"] is True
     assert state["default_business_installed"] is True
+
+
+def test_default_runtime_bootstrap_routes_model_api_to_api_base_url_when_configured():
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; "
+            "import inference.core.env as inference_env; "
+            "import inference.core.roboflow_api as inference_roboflow_api; "
+            "import inference_models.configuration as inference_models_configuration; "
+            "import coral_inference.core as core; "
+            "print(json.dumps({"
+            "'state': core.get_runtime_patch_installation_state(), "
+            "'inference_api_base_url': inference_env.API_BASE_URL, "
+            "'roboflow_api_base_url': inference_roboflow_api.API_BASE_URL, "
+            "'weights_provider_host': inference_models_configuration.ROBOFLOW_API_HOST"
+            "}))"
+        ),
+    ]
+    env = dict(os.environ)
+    env["API_BASE_URL"] = "http://backend.example"
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd(),
+        env=env,
+    )
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert payload["state"]["model_api_base"] == "http://backend.example"
+    assert payload["state"]["backend_model_api_configured"] is True
+    assert payload["inference_api_base_url"] == "http://backend.example"
+    assert payload["roboflow_api_base_url"] == "http://backend.example"
+    assert payload["weights_provider_host"] == "http://backend.example"
 
 
 def test_default_runtime_bootstrap_does_not_import_legacy_runtime_artifact_modules():
@@ -301,6 +340,36 @@ def test_register_runtime_package_validates_runtime_contract():
     )
 
 
+def test_register_runtime_model_bindings_registers_runtime_endpoint_without_lockfile():
+    bindings = register_runtime_model_bindings(
+        [
+            {
+                "node_name": "detect",
+                "field_name": "model",
+                "model_reference": "asset:9",
+                "binding_id": "bind-standalone-1",
+                "binding_ref": "binding:bind-standalone-1",
+                "binding_type": "package_ref",
+                "model_id": "model-9",
+                "model_name": "hard-hat-v7",
+                "task_type": "object-detection",
+                "framework": "rfdetr",
+                "selected_loader_type": "inference_models",
+                "selected_runtime": "onnx",
+                "artifact_manifest": {
+                    "runtime": {
+                        "supported_runtimes": ["onnx"],
+                        "preferred_runtime": "onnx",
+                    }
+                },
+            }
+        ]
+    )
+
+    assert bindings[0]["runtime_model_endpoint"] == "coral-runtime-bind-standalone-1"
+    assert get_runtime_model_binding("coral-runtime-bind-standalone-1") is not None
+
+
 def test_normalize_runtime_status_report_standardizes_state_and_payload():
     report = normalize_runtime_status_report(
         {
@@ -330,6 +399,40 @@ def test_normalize_runtime_status_report_standardizes_state_and_payload():
     assert report["sources_metadata"][0]["state"] == "RUNNING"
     assert report["video_source_status_updates"][0]["severity"] == "ERROR"
     assert report["video_source_status_updates"][0]["payload"] == {}
+
+
+def test_normalize_runtime_status_report_coerces_numeric_severity():
+    report = normalize_runtime_status_report(
+        {
+            "video_source_status_updates": [
+                {
+                    "timestamp": "2026-04-19T17:03:57Z",
+                    "severity": 20,
+                    "event_type": "HEALTH_CHECK_WARNING",
+                    "payload": {},
+                }
+            ]
+        }
+    )
+
+    assert report["video_source_status_updates"][0]["severity"] == "20"
+
+
+def test_normalize_runtime_status_report_accepts_numeric_source_reference():
+    report = normalize_runtime_status_report(
+        {
+            "sources_metadata": [
+                {
+                    "source_id": 0,
+                    "source_reference": 0,
+                    "state": "running",
+                }
+            ]
+        }
+    )
+
+    assert report["sources_metadata"][0]["source_reference"] == 0
+    assert report["sources_metadata"][0]["state"] == "RUNNING"
 
 
 def test_resolve_runtime_binding_model_signature_uses_binding_contract():
@@ -402,13 +505,12 @@ def test_get_runtime_binding_missing_required_files_for_inference_models():
             "framework": "yolov8",
             "selected_loader_type": "inference_models",
             "selected_backend": "onnx",
-            "package_files_snapshot": [
-                {"file_handle": "class_names.txt"},
-            ],
+            "package_files_snapshot": [],
         }
     )
 
     assert get_runtime_binding_missing_required_files(binding) == {
+        "class_names.txt",
         "inference_config.json",
         "weights.onnx",
     }
@@ -429,15 +531,13 @@ def test_get_runtime_binding_support_issue_rejects_missing_inference_models_file
             "framework": "yolov8",
             "selected_loader_type": "inference_models",
             "selected_backend": "onnx",
-            "package_files_snapshot": [
-                {"file_handle": "class_names.txt"},
-            ],
+            "package_files_snapshot": [],
         }
     )
 
     assert (
         get_runtime_binding_support_issue(binding)
-        == "Current Coral inference_models runtime is missing required package files: inference_config.json, weights.onnx"
+        == "Current Coral inference_models runtime is missing required package files: class_names.txt, inference_config.json, weights.onnx"
     )
 
 
@@ -557,6 +657,44 @@ def test_resolve_runtime_model_adapter_uses_coral_rknn_dispatch(monkeypatch):
     )
 
     assert resolve_runtime_model_adapter("coral-runtime-rknn-1") is RuntimeAdapter
+
+
+def test_coral_runtime_inference_models_adapter_instantiates_without_parent_init(monkeypatch):
+    monkeypatch.setattr(
+        "coral_inference.runtime.adapters.get_runtime_model_binding",
+        lambda model_id: {
+            "node_name": "detect",
+            "field_name": "model",
+            "model_reference": "asset:9",
+            "binding_id": "onnx-1",
+            "binding_ref": "binding:onnx-1",
+            "binding_type": "package_ref",
+            "model_id": "model-9",
+            "model_name": "helmet",
+            "task_type": "object-detection",
+            "framework": "rfdetr",
+            "selected_loader_type": "inference_models",
+            "selected_runtime": "onnx",
+            "package_files_snapshot": [{"file_handle": "weights.onnx"}],
+        },
+    )
+    monkeypatch.setattr(
+        "coral_inference.runtime.adapters.ensure_runtime_package_materialized",
+        lambda binding: types.SimpleNamespace(package_dir="/tmp/runtime-package"),
+    )
+    monkeypatch.setattr(
+        "coral_inference.runtime.adapters.load_inference_models_package",
+        lambda package_dir, **kwargs: types.SimpleNamespace(class_names=["helmet"]),
+    )
+
+    adapter = CoralRuntimeObjectDetectionAdapter(
+        model_id="coral-runtime-onnx-1",
+        api_key="api-key",
+    )
+
+    assert adapter.endpoint == "coral-runtime-onnx-1"
+    assert adapter.api_key == "api-key"
+    assert adapter.class_names == ["helmet"]
 
 
 def test_resolve_runtime_model_adapter_rejects_unsupported_binding(monkeypatch):

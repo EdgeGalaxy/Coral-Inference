@@ -1,17 +1,21 @@
+import asyncio
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from fastapi import Depends, FastAPI, Query
+import cv2
+from fastapi import Depends, FastAPI, Query, Request
 from pydantic import BaseModel, Field
 
-from inference.core.env import API_KEY
+from inference.core.env import API_BASE_URL, API_KEY, MODEL_CACHE_DIR
 from inference.core.interfaces.http.http_api import with_route_exceptions_async
 from inference.core.interfaces.stream_manager.api.entities import (
     CommandContext,
     CommandResponse,
     ConsumePipelineResponse,
+    InitializeWebRTCPipelineResponse,
 )
 from inference.core.interfaces.stream_manager.api.errors import (
     ProcessesManagerClientError,
@@ -27,7 +31,6 @@ from inference.core.interfaces.stream_manager.manager_app.entities import (
 from coral_inference.core.env import (
     CORAL_BACKEND_INTERNAL_SECRET,
     CORAL_BACKEND_PACKAGE_TIMEOUT,
-    CORAL_BACKEND_URL,
 )
 from coral_inference.runtime import (
     build_initialise_payload_from_runtime_package,
@@ -36,10 +39,14 @@ from coral_inference.runtime import (
 )
 from coral_inference.core.runtime_contract import normalize_runtime_status_report
 from coral_inference.core.log import logger
+from coral_inference.core.inference.stream_manager.entities import (
+    PatchInitialiseWebRTCPipelinePayload,
+)
 
 from ..cache import PipelineCache
 from ..monitor.metrics_response_builder import build_metrics_response_from_summary
 from ..routing_utils import get_monitor
+from ..uptime_buffer import record_segment, flush_to_backend
 
 
 class RuntimePackageInitialiseRequest(BaseModel):
@@ -59,6 +66,10 @@ class RuntimePackagePreviewRequest(BaseModel):
     backend_secret: Optional[str] = None
 
 
+class RuntimePackageRegisterRequest(BaseModel):
+    package: Dict[str, Any]
+
+
 class RuntimeDeploymentRequest(BaseModel):
     workspace_id: str
     backend_url: Optional[str] = None
@@ -66,6 +77,68 @@ class RuntimeDeploymentRequest(BaseModel):
     pipeline_name: Optional[str] = None
     existing_pipeline_id: Optional[str] = None
     auto_restart: Optional[bool] = True
+
+
+class RuntimeDeploymentVideoListResponse(BaseModel):
+    status: str
+    files: List[Dict[str, Any]] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+def _get_runtime_recordings_dir(pipeline_id: str, output_directory: str = "records") -> str:
+    return os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
+
+
+def _list_recording_files(pipeline_id: str, output_directory: str = "records") -> List[Dict[str, Any]]:
+    base_dir = _get_runtime_recordings_dir(pipeline_id, output_directory)
+    if not os.path.isdir(base_dir):
+        return []
+
+    files: List[Dict[str, Any]] = []
+    for name in os.listdir(base_dir):
+        if not name.lower().endswith(".mp4"):
+            continue
+        file_path = os.path.join(base_dir, name)
+        if not os.path.isfile(file_path):
+            continue
+        stat = os.stat(file_path)
+        files.append(
+            {
+                "filename": name,
+                "size_bytes": stat.st_size,
+                "created_at": int(stat.st_ctime),
+                "modified_at": int(stat.st_mtime),
+            }
+        )
+
+    files.sort(key=lambda item: item["created_at"], reverse=True)
+    return files[1:]
+
+
+async def _read_runtime_video_info(
+    pipeline_id: str,
+    filename: str,
+    base_url: str,
+) -> Dict[str, Any]:
+    video_url = f"{base_url.rstrip('/')}/mount/pipelines/{pipeline_id}/records/{filename}"
+    cap = await asyncio.to_thread(cv2.VideoCapture, video_url)
+    try:
+        if not cap.isOpened():
+            return {
+                "width": None,
+                "height": None,
+                "fps": None,
+                "total_frames": None,
+            }
+
+        return {
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None,
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or None,
+            "fps": cap.get(cv2.CAP_PROP_FPS) or None,
+            "total_frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or None,
+        }
+    finally:
+        cap.release()
 
 
 def _extract_runtime_identity_fields(
@@ -154,6 +227,44 @@ def _build_runtime_deployment_response(
         "runtime_deployment": runtime_deployment,
         **identity_fields,
     }
+
+
+async def _terminate_runtime_pipeline_background(
+    *,
+    deployment_id: str,
+    pipeline_id: str,
+    stream_manager_client: StreamManagerClient,
+    max_attempts: int = 3,
+) -> None:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            await stream_manager_client.terminate_pipeline(pipeline_id=pipeline_id)
+            logger.info(
+                "Background runtime pipeline cleanup succeeded. deployment_id={} pipeline_id={} attempt={}/{}",
+                deployment_id,
+                pipeline_id,
+                attempt,
+                max_attempts,
+            )
+            return
+        except ProcessesManagerNotFoundError:
+            logger.warning(
+                "Background runtime pipeline cleanup found pipeline already missing. deployment_id={} pipeline_id={}",
+                deployment_id,
+                pipeline_id,
+            )
+            return
+        except Exception as error:
+            logger.warning(
+                "Background runtime pipeline cleanup failed. deployment_id={} pipeline_id={} attempt={}/{} error={}",
+                deployment_id,
+                pipeline_id,
+                attempt,
+                max_attempts,
+                error,
+            )
+            if attempt < max_attempts:
+                await asyncio.sleep(1.0)
 
 
 def _empty_consume_pipeline_response(
@@ -411,9 +522,9 @@ async def _fetch_runtime_package(
     backend_url: Optional[str],
     backend_secret: Optional[str],
 ) -> Dict[str, Any]:
-    resolved_backend_url = (backend_url or CORAL_BACKEND_URL or "").rstrip("/")
+    resolved_backend_url = (backend_url or API_BASE_URL or "").rstrip("/")
     if not resolved_backend_url:
-        raise ValueError("CORAL_BACKEND_URL is required to fetch runtime package")
+        raise ValueError("API_BASE_URL is required to fetch runtime package")
 
     secret = backend_secret or CORAL_BACKEND_INTERNAL_SECRET
     if not secret:
@@ -432,6 +543,15 @@ async def _fetch_runtime_package(
             return await response.json()
 
 
+def _running_status_to_uptime(status_payload: Dict[str, Any]) -> str:
+    running_status = (status_payload.get("running_status") or "").lower()
+    if running_status in ("running", "success"):
+        return "online"
+    if status_payload.get("error_message"):
+        return "error"
+    return "degraded"
+
+
 async def _report_runtime_status_to_backend(
     *,
     workspace_id: str,
@@ -440,9 +560,17 @@ async def _report_runtime_status_to_backend(
     backend_url: Optional[str] = None,
     backend_secret: Optional[str] = None,
 ) -> None:
-    resolved_backend_url = (backend_url or CORAL_BACKEND_URL or "").rstrip("/")
+    from datetime import datetime
+    resolved_backend_url = (backend_url or API_BASE_URL or "").rstrip("/")
     secret = backend_secret or CORAL_BACKEND_INTERNAL_SECRET
     if not resolved_backend_url or not secret:
+        record_segment(
+            kind="deployment",
+            target_id=deployment_id,
+            workspace_id=workspace_id,
+            status=_running_status_to_uptime(status_payload),
+            started_at=datetime.now(),
+        )
         return
 
     payload = {
@@ -463,14 +591,33 @@ async def _report_runtime_status_to_backend(
         f"/deployments/{deployment_id}/runtime-status/noauth"
     )
     timeout = aiohttp.ClientTimeout(total=CORAL_BACKEND_PACKAGE_TIMEOUT)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            url,
-            json=payload,
-            headers={"X-Internal-Secret": secret},
-        ) as response:
-            response.raise_for_status()
-            await response.text()
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url,
+                json=payload,
+                headers={"X-Internal-Secret": secret},
+            ) as response:
+                response.raise_for_status()
+                await response.text()
+        # 上报成功，flush 本地缓冲
+        await flush_to_backend(
+            workspace_id=workspace_id,
+            kind="deployment",
+            target_id=deployment_id,
+            backend_url=backend_url,
+            backend_secret=backend_secret,
+        )
+    except Exception:
+        # 网络不通，记录到本地 buffer
+        record_segment(
+            kind="deployment",
+            target_id=deployment_id,
+            workspace_id=workspace_id,
+            status=_running_status_to_uptime(status_payload),
+            started_at=datetime.now(),
+        )
+        raise
 
 
 async def _emit_runtime_phase_to_backend(
@@ -528,6 +675,16 @@ def register_runtime_package_routes(
             backend_secret=request.backend_secret,
         )
         return register_runtime_package(package)
+
+    @app.post(
+        "/coral/runtime-packages/register",
+        summary="Register a raw runtime package in local Coral-Inference runtime",
+    )
+    @with_route_exceptions_async
+    async def register_raw_runtime_package(
+        request: RuntimePackageRegisterRequest,
+    ) -> Dict[str, Any]:
+        return register_runtime_package(request.package)
 
     @app.post(
         "/coral/runtime-packages/initialise",
@@ -704,23 +861,16 @@ def register_runtime_package_routes(
 
         pipeline_id = existing["pipeline_id"]
         try:
-            response = await stream_manager_client.terminate_pipeline(
-                pipeline_id=pipeline_id
-            )
-        except ProcessesManagerNotFoundError:
-            logger.warning(
-                "Runtime deployment {} pipeline {} already missing during terminate",
-                deployment_id,
-                pipeline_id,
-            )
-            response = {
-                "status": "success",
-                "context": {"pipeline_id": pipeline_id},
-            }
-        try:
             pipeline_cache.terminate(pipeline_id)
         except Exception:
             pass
+        asyncio.create_task(
+            _terminate_runtime_pipeline_background(
+                deployment_id=deployment_id,
+                pipeline_id=pipeline_id,
+                stream_manager_client=stream_manager_client,
+            )
+        )
         status_response = {
             **_build_runtime_deployment_response(
                 deployment_id=deployment_id,
@@ -729,25 +879,13 @@ def register_runtime_package_routes(
                 running_status="stopped",
                 runtime_deployment=existing,
                 runtime_phase="stopped",
-                phase_message="Runtime deployment terminated on edge runtime",
+                phase_message="Runtime deployment removed from local cache and scheduled for background cleanup",
             ),
-            "command_response": _extract_command_response(response),
+            "command_response": {
+                "status": "success",
+                "context": {"pipeline_id": pipeline_id},
+            },
         }
-        try:
-            await _report_runtime_status_to_backend(
-                workspace_id=request.workspace_id,
-                deployment_id=deployment_id,
-                status_payload=status_response,
-                backend_url=request.backend_url,
-                backend_secret=request.backend_secret,
-            )
-        except Exception as error:
-            logger.warning(
-                "Failed to report runtime deployment status to backend after terminate. "
-                "deployment_id={} error={}",
-                deployment_id,
-                error,
-            )
         return status_response
 
     @app.get(
@@ -800,6 +938,123 @@ def register_runtime_package_routes(
         )
         return response.model_dump()
 
+    @app.post(
+        "/coral/runtime-deployments/{deployment_id}/offer",
+        response_model=InitializeWebRTCPipelineResponse,
+        summary="Offer WebRTC stream for a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def offer_runtime_deployment(
+        deployment_id: str,
+        request: PatchInitialiseWebRTCPipelinePayload,
+        workspace_id: str = Query(...),
+    ) -> Dict[str, Any]:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            raise ProcessesManagerNotFoundError(
+                private_message=f"Runtime deployment {deployment_id} not found",
+                public_message=f"Runtime deployment {deployment_id} not found"
+            )
+
+        pipeline_id = runtime_deployment["pipeline_id"]
+        response = await stream_manager_client.offer(
+            pipeline_id=pipeline_id,
+            offer_request=request,
+        )
+        return _extract_command_response(response)
+
+    @app.post(
+        "/coral/runtime-deployments/{deployment_id}/pause",
+        summary="Pause a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def pause_runtime_deployment(
+        deployment_id: str,
+        request: RuntimeDeploymentRequest,
+    ) -> Dict[str, Any]:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            return _build_runtime_deployment_response(
+                deployment_id=deployment_id,
+                workspace_id=request.workspace_id,
+                pipeline_id=None,
+                running_status="stopped",
+                runtime_phase="stopped",
+                phase_message="Runtime deployment is not registered in local cache",
+            )
+
+        response = await stream_manager_client.pause_pipeline(
+            pipeline_id=runtime_deployment["pipeline_id"]
+        )
+        status_response = await _get_runtime_deployment_status(
+            deployment_id=deployment_id,
+            workspace_id=request.workspace_id,
+            stream_manager_client=stream_manager_client,
+            pipeline_cache=pipeline_cache,
+        )
+        status_response["command_response"] = _extract_command_response(response)
+        try:
+            await _report_runtime_status_to_backend(
+                workspace_id=request.workspace_id,
+                deployment_id=deployment_id,
+                status_payload=status_response,
+                backend_url=request.backend_url,
+                backend_secret=request.backend_secret,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to report runtime deployment status to backend after pause. deployment_id={} error={}",
+                deployment_id,
+                error,
+            )
+        return status_response
+
+    @app.post(
+        "/coral/runtime-deployments/{deployment_id}/resume",
+        summary="Resume a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def resume_runtime_deployment(
+        deployment_id: str,
+        request: RuntimeDeploymentRequest,
+    ) -> Dict[str, Any]:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            return _build_runtime_deployment_response(
+                deployment_id=deployment_id,
+                workspace_id=request.workspace_id,
+                pipeline_id=None,
+                running_status="stopped",
+                runtime_phase="stopped",
+                phase_message="Runtime deployment is not registered in local cache",
+            )
+
+        response = await stream_manager_client.resume_pipeline(
+            pipeline_id=runtime_deployment["pipeline_id"]
+        )
+        status_response = await _get_runtime_deployment_status(
+            deployment_id=deployment_id,
+            workspace_id=request.workspace_id,
+            stream_manager_client=stream_manager_client,
+            pipeline_cache=pipeline_cache,
+        )
+        status_response["command_response"] = _extract_command_response(response)
+        try:
+            await _report_runtime_status_to_backend(
+                workspace_id=request.workspace_id,
+                deployment_id=deployment_id,
+                status_payload=status_response,
+                backend_url=request.backend_url,
+                backend_secret=request.backend_secret,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to report runtime deployment status to backend after resume. deployment_id={} error={}",
+                deployment_id,
+                error,
+            )
+        return status_response
+
     @app.get(
         "/coral/runtime-deployments/{deployment_id}/metrics",
         summary="Get metrics of a runtime deployment identified by Coral deployment_id",
@@ -825,6 +1080,73 @@ def register_runtime_package_routes(
             end_time=end_time,
             minutes=minutes,
             level=level,
+        )
+
+    @app.get(
+        "/coral/runtime-deployments/{deployment_id}/videos",
+        response_model=RuntimeDeploymentVideoListResponse,
+        summary="List recordings of a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def list_runtime_deployment_videos(
+        deployment_id: str,
+        workspace_id: str,
+        output_directory: str = "records",
+    ) -> RuntimeDeploymentVideoListResponse:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            return RuntimeDeploymentVideoListResponse(status="success", files=[])
+        files = _list_recording_files(
+            pipeline_id=runtime_deployment["pipeline_id"],
+            output_directory=output_directory,
+        )
+        return RuntimeDeploymentVideoListResponse(status="success", files=files)
+
+    @app.get(
+        "/coral/runtime-deployments/{deployment_id}/videos/{filename}/url",
+        summary="Get recording URL of a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def get_runtime_deployment_video_url(
+        deployment_id: str,
+        filename: str,
+        workspace_id: str,
+        request: Request,
+        output_directory: str = "records",
+    ) -> Dict[str, Any]:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            raise ProcessesManagerNotFoundError(
+                public_message=f"Runtime deployment {deployment_id} not found"
+            )
+        base_url = str(request.base_url).rstrip("/")
+        return {
+            "url": f"{base_url}/mount/pipelines/{runtime_deployment['pipeline_id']}/{output_directory}/{filename}"
+        }
+
+    @app.get(
+        "/coral/runtime-deployments/{deployment_id}/videos/{filename}/info",
+        summary="Get recording info of a runtime deployment identified by Coral deployment_id",
+    )
+    @with_route_exceptions_async
+    async def get_runtime_deployment_video_info(
+        deployment_id: str,
+        filename: str,
+        workspace_id: str,
+        request: Request,
+    ) -> Dict[str, Any]:
+        runtime_deployment = pipeline_cache.get_runtime_deployment(deployment_id)
+        if runtime_deployment is None:
+            return {
+                "width": None,
+                "height": None,
+                "fps": None,
+                "total_frames": None,
+            }
+        return await _read_runtime_video_info(
+            pipeline_id=runtime_deployment["pipeline_id"],
+            filename=filename,
+            base_url=str(request.base_url),
         )
 
     @app.get(

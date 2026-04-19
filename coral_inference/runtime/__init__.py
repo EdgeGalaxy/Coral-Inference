@@ -8,6 +8,7 @@ from coral_inference.runtime.compat import (
     is_runtime_model_endpoint,
     make_runtime_model_endpoint,
     materialize_runtime_workflow_specification,
+    register_runtime_model_bindings,
     register_runtime_package,
 )
 from coral_inference.runtime.contracts import (
@@ -48,5 +49,6 @@ __all__ = [
     "make_runtime_model_endpoint",
     "materialize_model_binding",
     "materialize_runtime_workflow_specification",
+    "register_runtime_model_bindings",
     "register_runtime_package",
 ]

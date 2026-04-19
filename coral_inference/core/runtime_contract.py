@@ -140,7 +140,7 @@ class RuntimePackageSource(BaseModel):
     camera_name: Optional[str] = None
     type: Optional[str] = None
     path: Optional[Any] = None
-    resolved_path: Optional[str] = None
+    resolved_path: Optional[Any] = None
 
 
 class RuntimePackageStreamConfig(BaseModel):
@@ -164,7 +164,7 @@ class RuntimeReportSourceProperties(BaseModel):
 
 class RuntimeReportSourceMetadata(BaseModel):
     source_id: Optional[int] = None
-    source_reference: Optional[str] = None
+    source_reference: Optional[Any] = None
     state: Optional[str] = None
     source_properties: Optional[RuntimeReportSourceProperties] = None
 
@@ -183,7 +183,7 @@ class RuntimeReportLatency(BaseModel):
 
 class RuntimeReportStatusUpdate(BaseModel):
     timestamp: Optional[str] = None
-    severity: Optional[str] = None
+    severity: Optional[Any] = None
     event_type: Optional[str] = None
     context: Optional[str] = None
     payload: Dict[str, Any] = Field(default_factory=dict)

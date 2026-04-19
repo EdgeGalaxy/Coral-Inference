@@ -1,3 +1,7 @@
+import os
+
+from inference.core import env as inference_env
+from inference.core import roboflow_api as inference_roboflow_api
 from inference.core.interfaces.camera import video_source
 from inference.core.interfaces.stream import sinks
 from inference.core.interfaces.stream_manager.api import stream_manager_client
@@ -27,6 +31,37 @@ from coral_inference.runtime.model_type_resolver import (
 runtime_platform = get_runtime_platform()
 _BUSINESS_RUNTIME_PATCHES_INSTALLED = False
 _MODEL_DISPATCH_PATCHES_INSTALLED = False
+_BACKEND_MODEL_API_CONFIGURED = False
+
+
+def configure_backend_model_api_base() -> bool:
+    global _BACKEND_MODEL_API_CONFIGURED
+
+    resolved_model_api_base = (
+        os.getenv("API_BASE_URL")
+        or getattr(inference_env, "API_BASE_URL", None)
+        or ""
+    ).rstrip("/")
+    if not resolved_model_api_base:
+        return False
+
+    os.environ["API_BASE_URL"] = resolved_model_api_base
+    os.environ["ROBOFLOW_API_HOST"] = resolved_model_api_base
+    inference_env.API_BASE_URL = resolved_model_api_base
+    inference_roboflow_api.API_BASE_URL = resolved_model_api_base
+
+    try:
+        import inference_models.configuration as inference_models_configuration
+        from inference_models.weights_providers import roboflow as inference_models_roboflow
+
+        inference_models_configuration.ROBOFLOW_API_HOST = resolved_model_api_base
+        inference_models_roboflow.ROBOFLOW_API_HOST = resolved_model_api_base
+    except Exception:
+        # inference_models may be absent in some lightweight environments
+        pass
+
+    _BACKEND_MODEL_API_CONFIGURED = True
+    return True
 
 
 def get_runtime_patch_installation_state() -> dict:
@@ -34,6 +69,9 @@ def get_runtime_patch_installation_state() -> dict:
         "runtime_platform": runtime_platform,
         "default_dispatch_installed": _MODEL_DISPATCH_PATCHES_INSTALLED,
         "default_business_installed": _BUSINESS_RUNTIME_PATCHES_INSTALLED,
+        "model_api_base": (os.getenv("API_BASE_URL") or getattr(inference_env, "API_BASE_URL", None) or "").rstrip("/")
+        or None,
+        "backend_model_api_configured": _BACKEND_MODEL_API_CONFIGURED,
     }
 
 
@@ -63,6 +101,7 @@ def install_runtime_model_dispatch_patches() -> bool:
     _MODEL_DISPATCH_PATCHES_INSTALLED = True
     return True
 def install_default_runtime_patches() -> None:
+    configure_backend_model_api_base()
     install_runtime_model_dispatch_patches()
     install_business_runtime_patches()
 

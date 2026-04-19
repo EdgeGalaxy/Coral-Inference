@@ -3,6 +3,7 @@ import threading
 from typing import Dict, Callable, Optional, Any
 from threading import Event
 from collections import deque
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 import numpy as np
 from loguru import logger
@@ -208,22 +209,44 @@ class WebRTCManager:
         if self.peer_connection:
             try:
                 # 注意：peer_connection的清理需要在正确的事件循环中进行
-                if self.loop and not self.loop.is_closed():
+                if (
+                    self.loop
+                    and not self.loop.is_closed()
+                    and self.loop.is_running()
+                ):
                     future = asyncio.run_coroutine_threadsafe(
                         self.peer_connection.close(), self.loop
                     )
                     try:
-                        future.result(timeout=5.0)  # 5秒超时
-                    except:
-                        pass
+                        future.result(timeout=5.0)  # 等待 aiortc sender 完整收尾
+                    except FutureTimeoutError:
+                        logger.warning("清理 peer_connection 超时，继续关闭事件循环")
+                    except RuntimeError as error:
+                        logger.warning(f"清理 peer_connection 时运行时关闭: {error}")
+                    except Exception as error:
+                        logger.warning(f"清理 peer_connection 时出现异常: {error}")
             except Exception as e:
                 logger.warning(f"清理peer_connection时出错: {e}")
+            finally:
+                self.peer_connection = None
+
+        if self.loop and not self.loop.is_closed() and self.loop.is_running():
+            try:
+                self.loop.call_soon_threadsafe(self.loop.stop)
+            except RuntimeError as error:
+                logger.warning(f"停止事件循环时出现异常: {error}")
+
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+            self.thread = None
 
         if self.loop and not self.loop.is_closed():
             try:
-                self.loop.call_soon_threadsafe(self.loop.stop)
-            except:
-                pass
+                self.loop.close()
+            except RuntimeError as error:
+                logger.warning(f"关闭事件循环时出现异常: {error}")
+            finally:
+                self.loop = None
 
         logger.info("WebRTC资源清理完成")
 

@@ -50,6 +50,30 @@ def get_runtime_deployment(deployment_id: str) -> Optional[Dict[str, Any]]:
         return deployment.model_dump(exclude_none=True)
 
 
+def _register_runtime_model_bindings_unlocked(
+    model_bindings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    registered_bindings: List[Dict[str, Any]] = []
+    for binding in model_bindings or []:
+        if not isinstance(binding, dict):
+            continue
+        runtime_endpoint = binding.get("runtime_model_endpoint")
+        if not runtime_endpoint:
+            runtime_endpoint = make_runtime_model_endpoint(binding)
+            binding["runtime_model_endpoint"] = runtime_endpoint
+        normalised_binding = _normalise_runtime_binding_contract(copy.deepcopy(binding))
+        _RUNTIME_MODEL_BINDINGS[runtime_endpoint] = normalised_binding
+        registered_bindings.append(copy.deepcopy(normalised_binding))
+    return registered_bindings
+
+
+def register_runtime_model_bindings(
+    model_bindings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    with _LOCK:
+        return _register_runtime_model_bindings_unlocked(model_bindings)
+
+
 def _normalise_model_metadata(binding: Dict[str, Any]) -> Dict[str, Any]:
     model_metadata = copy.deepcopy(binding.get("model_metadata") or {})
     if not model_metadata:
@@ -226,12 +250,7 @@ def register_runtime_package(package: Dict[str, Any]) -> Dict[str, Any]:
 
     with _LOCK:
         _REGISTRY.register_lockfile(RuntimeLockfile.model_validate(registered_package))
-        for binding in model_bindings:
-            runtime_endpoint = binding.get("runtime_model_endpoint")
-            if runtime_endpoint:
-                _RUNTIME_MODEL_BINDINGS[runtime_endpoint] = _normalise_runtime_binding_contract(
-                    binding
-                )
+        _register_runtime_model_bindings_unlocked(model_bindings)
 
     return copy.deepcopy(registered_package)
 
