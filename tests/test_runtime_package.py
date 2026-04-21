@@ -149,6 +149,62 @@ def test_default_runtime_bootstrap_routes_model_api_to_api_base_url_when_configu
     assert payload["weights_provider_host"] == "http://backend.example"
 
 
+def test_runtime_default_backend_env_sets_fallbacks_without_overriding_explicit_values():
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import json; "
+            "import os; "
+            "from coral_inference.core.env import apply_runtime_default_backend_env; "
+            "apply_runtime_default_backend_env(); "
+            "print(json.dumps({"
+            "'api_base_url': os.environ.get('API_BASE_URL'), "
+            "'license_server': os.environ.get('LICENSE_SERVER'), "
+            "'metrics_url': os.environ.get('METRICS_URL')"
+            "}))"
+        ),
+    ]
+
+    empty_env = dict(os.environ)
+    empty_env.pop("API_BASE_URL", None)
+    empty_env.pop("LICENSE_SERVER", None)
+    empty_env.pop("METRICS_URL", None)
+
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd(),
+        env=empty_env,
+    )
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert payload["api_base_url"] == "https://coral.loopeai.com"
+    assert payload["license_server"] == "coral.loopeai.com"
+    assert payload["metrics_url"] == "https://coral.loopeai.com/inference-stats"
+
+    explicit_env = dict(empty_env)
+    explicit_env["API_BASE_URL"] = "http://backend.example"
+    explicit_env["LICENSE_SERVER"] = "license.internal"
+    explicit_env["METRICS_URL"] = "http://metrics.example/inference-stats"
+
+    explicit_result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd(),
+        env=explicit_env,
+    )
+    explicit_payload = json.loads(explicit_result.stdout.strip().splitlines()[-1])
+
+    assert explicit_payload["api_base_url"] == "http://backend.example"
+    assert explicit_payload["license_server"] == "license.internal"
+    assert explicit_payload["metrics_url"] == "http://metrics.example/inference-stats"
+
+
 def test_default_runtime_bootstrap_does_not_import_legacy_runtime_artifact_modules():
     command = [
         sys.executable,

@@ -1,3 +1,7 @@
+from coral_inference.core.env import apply_runtime_default_backend_env
+
+apply_runtime_default_backend_env()
+
 from inference.core.logger import logger
 
 from coral_inference.core.patches import (

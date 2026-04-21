@@ -1,5 +1,16 @@
 import os
 
+CORAL_PLATFORM_BASE_URL = "https://coral.loopeai.com"
+CORAL_LICENSE_SERVER_HOST = "coral.loopeai.com"
+CORAL_METRICS_URL = f"{CORAL_PLATFORM_BASE_URL}/inference-stats"
+
+
+def apply_runtime_default_backend_env() -> None:
+    os.environ.setdefault("API_BASE_URL", CORAL_PLATFORM_BASE_URL)
+    os.environ.setdefault("LICENSE_SERVER", CORAL_LICENSE_SERVER_HOST)
+    os.environ.setdefault("METRICS_URL", CORAL_METRICS_URL)
+
+
 # 当前运行的环境
 CURRENT_INFERENCE_PLATFORM = os.getenv("CURRENT_INFERENCE_PLATFORM")
 

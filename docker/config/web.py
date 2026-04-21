@@ -1,7 +1,13 @@
 import asyncio
 import os
 
-from coral_inference.core.env import CURRENT_INFERENCE_PLATFORM
+from coral_inference.core.env import (
+    CURRENT_INFERENCE_PLATFORM,
+    apply_runtime_default_backend_env,
+)
+
+apply_runtime_default_backend_env()
+
 from inference.core.interfaces.http.http_api import HttpInterface
 from inference.core.managers.base import ModelManager
 from inference.core.managers.decorators.fixed_size_cache import WithFixedSizeCache
