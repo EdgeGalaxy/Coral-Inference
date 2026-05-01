@@ -1,23 +1,18 @@
-// API服务 - 连接后端接口
-const isIpAddress = (host: string): boolean => {
-  // IPv4 pattern
-  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  // IPv6 pattern (simplified)
-  const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
-  return ipv4Pattern.test(host) || ipv6Pattern.test(host);
-};
 // 环境变量配置
 const getApiBaseUrl = (): string => {
-  // 在浏览器环境中，动态获取当前页面的主机名
-  // 这样可以确保API请求与前端页面在同一个域下，解决了内网访问的问题
-  if (typeof window !== 'undefined') {
-    // 使用与浏览器地址栏相同的协议和主机名，端口固定为9001
-    return `${window.location.protocol}//${window.location.hostname}${isIpAddress(window.location.hostname) ? ':9001' : ''}`;
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL
   }
 
-  // 在服务器端环境(SSR/SSG)或构建时，使用环境变量或默认值
-  // 这种情况下的请求地址需要通过环境变量 `NEXT_PUBLIC_API_BASE_URL` 来指定
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:9001'
+  if (typeof window !== 'undefined') {
+    if (window.location.port === '9001') {
+      return window.location.origin
+    }
+
+    return `${window.location.protocol}//${window.location.hostname}:9001`
+  }
+
+  return 'http://localhost:9001'
 }
 
 // 状态枚举
@@ -28,6 +23,8 @@ export interface Pipeline {
   id: string
   name: string
   status: PipelineStatus
+  created_at?: number
+  restore_pipeline_id?: string
 }
 
 export interface MetricsResponse {
@@ -94,10 +91,14 @@ export interface PipelineInfoResponse {
   data: {
     pipeline_id: string
     restore_pipeline_id: string
+    pipeline_name?: string
     parameters: {
       output_image_fields?: string[]
       [key: string]: any
     }
+    auto_restart?: boolean
+    created_at?: number
+    updated_at?: number
   }
 }
 
@@ -215,6 +216,7 @@ export const pipelineApi = {
         pipelines: string[]
         fixed_pipelines: Array<{
           pipeline_id: string
+          restore_pipeline_id?: string
           pipeline_name: string
           created_at: number
         }>
@@ -224,7 +226,9 @@ export const pipelineApi = {
       const pipelines: Pipeline[] = response.fixed_pipelines.map(pipelineInfo => ({
         id: pipelineInfo.pipeline_id,
         name: pipelineInfo.pipeline_name,
-        status: 'pending' as const // 默认状态，实际状态需要通过其他接口获取
+        status: 'pending' as const,
+        created_at: pipelineInfo.created_at,
+        restore_pipeline_id: pipelineInfo.restore_pipeline_id,
       }))
 
       return pipelines
@@ -371,40 +375,6 @@ export const monitorApi = {
     }
   },
 
-  // 手动刷新缓存
-  async flushCache() {
-    try {
-      const response = await apiRequest<{
-        status: string
-        message: string
-      }>('/monitor/flush-cache', {
-        method: 'POST',
-      })
-      
-      return response
-    } catch (error) {
-      console.error('刷新缓存失败:', error)
-      throw error
-    }
-  },
-
-  // 手动触发清理
-  async triggerCleanup() {
-    try {
-      const response = await apiRequest<{
-        status: string
-        message: string
-      }>('/monitor/cleanup', {
-        method: 'POST',
-      })
-      
-      return response
-    } catch (error) {
-      console.error('触发清理失败:', error)
-      throw error
-    }
-  },
-
   // 获取监控器状态
   async getMonitorStatus() {
     try {
@@ -439,49 +409,6 @@ export const monitorApi = {
     }
   },
 
-  // 获取Pipeline指标摘要（从 InfluxDB）
-  async getMetricsSummary(
-    pipelineId: string,
-    timeRange: { start?: number; end?: number; minutes?: number; aggregation_window?: string } = { minutes: 30 }
-  ) {
-    try {
-      const params = new URLSearchParams()
-      
-      if (timeRange.start) params.append('start_time', timeRange.start.toString())
-      if (timeRange.end) params.append('end_time', timeRange.end.toString())
-      if (timeRange.minutes) params.append('minutes', timeRange.minutes.toString())
-      if (timeRange.aggregation_window) params.append('aggregation_window', timeRange.aggregation_window)
-      
-      const queryString = params.toString()
-      const endpoint = `/inference_pipelines/${pipelineId}/metrics/summary${queryString ? `?${queryString}` : ''}`
-      
-      const response = await apiRequest<{
-        status: string
-        data: {
-          pipeline_id: string
-          start_time: string
-          end_time: string
-          aggregation_window: string
-          data: Array<{
-            time?: string
-            source_id?: string
-            avg_latency?: number
-            max_p99_latency?: number
-            avg_fps?: number
-            total_frames?: number
-            total_dropped?: number
-            [key: string]: any
-          }>
-        }
-      }>(endpoint)
-      
-      return response.data
-    } catch (error) {
-      console.error('获取Pipeline指标摘要失败:', error)
-      throw error
-    }
-  },
-
   // 获取 InfluxDB 连接状态
   async getInfluxDBStatus() {
     try {
@@ -492,7 +419,7 @@ export const monitorApi = {
           connected: boolean
           healthy?: boolean
           url?: string
-          bucket?: string
+          database?: string
           measurement?: string
           buffer_size?: number
           last_flush_time?: number
@@ -514,26 +441,8 @@ export const customMetricsApi = {
     return apiRequest<CustomMetric[]>('/custom-metrics')
   },
 
-  async create(payload: CustomMetricPayload): Promise<CustomMetric> {
-    return apiRequest<CustomMetric>('/custom-metrics', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-  },
-
   async get(metricId: number): Promise<CustomMetric> {
     return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`)
-  },
-
-  async update(metricId: number, payload: CustomMetricPayload): Promise<CustomMetric> {
-    return apiRequest<CustomMetric>(`/custom-metrics/${metricId}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    })
-  },
-
-  async remove(metricId: number): Promise<void> {
-    await apiRequest(`/custom-metrics/${metricId}`, { method: 'DELETE' })
   },
 
   async fetchChartData(

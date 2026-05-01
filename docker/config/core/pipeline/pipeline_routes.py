@@ -29,6 +29,7 @@ from ..pipeline.pipeline_utils import (
     download_videos_parallel,
     cleanup_pipeline_videos,
 )
+from ..pipeline.metadata_utils import resolve_output_image_fields
 
 
 def _extract_status_response_dict(
@@ -102,9 +103,15 @@ def register_pipeline_routes(
                     downloaded_paths
                 )
 
-        output_image_fields = workflows_parameters.get("output_image_fields", []) + [
-            "source_image"
-        ]
+        output_image_fields = resolve_output_image_fields(
+            payload=req_dict,
+            parameters={
+                "output_image_fields": workflows_parameters.get(
+                    "output_image_fields",
+                    [],
+                )
+            },
+        )
         pipeline_name = workflows_parameters.get("pipeline_name", "")
         auto_restart = workflows_parameters.get("auto_restart", not is_file_source)
 
@@ -136,6 +143,39 @@ def register_pipeline_routes(
         if mapped:
             return mapped["restore_pipeline_id"]
         return pipeline_id
+
+    @app.get(
+        "/inference_pipelines/{pipeline_id}/info",
+        summary="Get cached InferencePipeline metadata",
+        description="Returns read-only metadata stored in the local pipeline cache.",
+    )
+    @with_route_exceptions_async
+    async def get_pipeline_info(pipeline_id: str) -> Dict[str, Any]:
+        pipeline = pipeline_cache.get_info(pipeline_id)
+        if pipeline is None:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
+
+        parameters = pipeline.get("parameters") or {}
+        parameters = {
+            **parameters,
+            "output_image_fields": resolve_output_image_fields(
+                parameters=parameters,
+                payload=pipeline.get("payload") or {},
+            ),
+        }
+
+        return {
+            "status": "success",
+            "data": {
+                "pipeline_id": pipeline["pipeline_id"],
+                "restore_pipeline_id": pipeline["restore_pipeline_id"],
+                "pipeline_name": pipeline["pipeline_name"],
+                "parameters": parameters,
+                "auto_restart": pipeline["auto_restart"],
+                "created_at": pipeline["created_at"],
+                "updated_at": pipeline["updated_at"],
+            },
+        }
 
     @app.get(
         "/inference_pipelines/{pipeline_id}/status",

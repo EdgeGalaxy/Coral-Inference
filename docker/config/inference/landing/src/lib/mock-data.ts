@@ -208,4 +208,4 @@ a=ssrc:2 label:`
 }
 
 // 模拟视频流URL（用于测试）
-export const mockVideoStreamUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' 
+export const mockVideoStreamUrl = '' 

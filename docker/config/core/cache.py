@@ -93,6 +93,7 @@ class PipelineCache(SQLiteWrapper):
         pipeline_id_mapper = {
             r[self._col_restore_pipeline_id]: {
                 "pipeline_id": r[self._col_pipeline_id],
+                "restore_pipeline_id": r[self._col_restore_pipeline_id],
                 "pipeline_name": r[self._col_pipeline_name],
                 "created_at": r[self._col_created_at],
             }
@@ -127,6 +128,17 @@ class PipelineCache(SQLiteWrapper):
         else:
             logger.warning(f"Pipeline {pipeline_id} not found in cache")
             return None
+
+    def get_info(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.select()
+        for row in rows:
+            if (
+                row[self._col_pipeline_id] == pipeline_id
+                or row[self._col_restore_pipeline_id] == pipeline_id
+            ):
+                return self._decode_row(row)
+        logger.warning(f"Pipeline {pipeline_id} not found in cache")
+        return None
 
     def get_restore_pipeline_id(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
         rows = self.select()

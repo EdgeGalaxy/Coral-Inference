@@ -45,6 +45,7 @@ from coral_inference.core.inference.stream_manager.entities import (
 
 from ..cache import PipelineCache
 from ..monitor.metrics_response_builder import build_metrics_response_from_summary
+from ..pipeline.metadata_utils import resolve_output_image_fields
 from ..routing_utils import get_monitor
 from ..uptime_buffer import record_segment, flush_to_backend
 
@@ -380,13 +381,18 @@ async def _initialise_runtime_deployment(
         pipeline_id = (response_dict.get("context", {}) or {}).get("pipeline_id")
         parameters = None
         if pipeline_id:
+            output_image_fields = resolve_output_image_fields(
+                package=package,
+                payload=initialisation_request.model_dump(),
+            )
+            package.setdefault("stream_config", {})[
+                "output_image_fields"
+            ] = output_image_fields
             parameters = {
                 "deployment_id": package.get("deployment_id"),
                 "workspace_id": package.get("workspace_id"),
                 "gateway_id": package.get("gateway_id"),
-                "output_image_fields": package.get("stream_config", {}).get(
-                    "output_image_fields", []
-                ),
+                "output_image_fields": output_image_fields,
                 "deployment_mode": "runtime_package",
                 "deployment_revision": package.get("deployment_revision"),
                 "package_digest": package.get("package_digest"),

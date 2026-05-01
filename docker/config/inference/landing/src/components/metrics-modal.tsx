@@ -29,18 +29,15 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
   const [timeRange, setTimeRange] = useState<string>('5')
   const [refreshing, setRefreshing] = useState(false)
   const [influxDBStatus, setInfluxDBStatus] = useState<any>(null)
-  const [useInfluxDB, setUseInfluxDB] = useState(true)
 
   // 检查InfluxDB状态
   const checkInfluxDBStatus = async () => {
     try {
       const status = await monitorApi.getInfluxDBStatus()
       setInfluxDBStatus(status)
-      setUseInfluxDB(status.enabled && status.connected)
       console.log('InfluxDB状态:', status)
     } catch (error) {
       console.error('获取InfluxDB状态失败:', error)
-      setUseInfluxDB(false)
     }
   }
 
@@ -56,23 +53,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
       
       const minutes = parseInt(timeRange)
       
-      let response: MetricsResponse
-      
-      if (useInfluxDB && influxDBStatus?.connected) {
-        // 尝试使用InfluxDB获取数据
-        try {
-          console.log('使用InfluxDB获取指标数据')
-          response = await pipelineApi.getMetrics(pipelineId, { minutes })
-        } catch (influxError) {
-          console.warn('InfluxDB获取失败，降级使用文件数据:', influxError)
-          // 如果InfluxDB失败，降级使用原始接口
-          response = await pipelineApi.getMetrics(pipelineId, { minutes })
-        }
-      } else {
-        // 使用原始接口获取数据
-        console.log('使用文件系统获取指标数据')
-        response = await pipelineApi.getMetrics(pipelineId, { minutes })
-      }
+      const response = await pipelineApi.getMetrics(pipelineId, { minutes })
       
       console.log('获取到指标数据:', response)
       setMetricsData(response)
@@ -271,7 +252,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                 </Badge>
               )}
               <Badge variant="outline">
-                {useInfluxDB ? '实时模式' : '文件模式'}
+                {influxDBStatus?.enabled ? 'InfluxDB 指标' : '指标未启用'}
               </Badge>
             </div>
           </DialogTitle>
@@ -607,7 +588,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                     <div className="flex items-center gap-2">
                       {influxDBStatus && (
                         <Badge variant={influxDBStatus.connected ? 'default' : 'secondary'} className="text-xs">
-                          {influxDBStatus.connected ? 'InfluxDB' : 'File'}
+                          {influxDBStatus.connected ? 'InfluxDB' : '未连接'}
                         </Badge>
                       )}
                     </div>
@@ -652,13 +633,13 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                         <div>
                           <span className="text-muted-foreground">数据源:</span>
                           <span className="ml-1 font-medium">
-                            {influxDBStatus.connected ? influxDBStatus.url : '本地文件'}
+                            {influxDBStatus.connected ? influxDBStatus.url : '暂无指标数据'}
                           </span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">数据库:</span>
                           <span className="ml-1 font-medium">
-                            {influxDBStatus.bucket || 'N/A'}
+                            {influxDBStatus.database || 'N/A'}
                           </span>
                         </div>
                         <div>
@@ -689,7 +670,7 @@ export function MetricsModal({ isOpen, onClose, pipelineId }: MetricsModalProps)
                   <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium mb-2">暂无指标数据</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    所选时间范围内没有找到指标数据
+                    {influxDBStatus?.enabled ? '所选时间范围内没有找到指标数据' : 'InfluxDB 未启用，暂无指标数据'}
                   </p>
                   <Button onClick={fetchMetrics} size="sm">
                     重新加载

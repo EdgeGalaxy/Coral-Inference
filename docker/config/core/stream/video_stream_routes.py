@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import mimetypes
+from pathlib import Path
 from typing import Dict, Optional, Union, List, Tuple
 
 import numpy as np
@@ -218,6 +219,60 @@ def register_video_stream_routes(
                     break
                 bytes_left -= len(data)
                 yield data
+
+    @app.get(
+        "/inference_pipelines/{pipeline_id}/videos/{filename}",
+        summary="播放或下载录像文件",
+        description="返回指定 pipeline 的 mp4 录像文件，支持 HTTP Range 请求。",
+    )
+    @with_route_exceptions_async
+    async def get_pipeline_video_file(
+        pipeline_id: str,
+        filename: str,
+        request: Request,
+        range_header: Optional[str] = Header(None, alias="Range"),
+        output_directory: str = "records",
+    ) -> StreamingResponse:
+        if "/" in filename or "\\" in filename or filename in {"", ".", ".."}:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        if "/" in output_directory or "\\" in output_directory or output_directory in {
+            "",
+            ".",
+            "..",
+        }:
+            raise HTTPException(status_code=400, detail="Invalid output directory")
+
+        base_dir = Path(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
+        file_path = (base_dir / filename).resolve()
+        try:
+            file_path.relative_to(base_dir.resolve())
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid video path")
+        if not file_path.is_file() or file_path.suffix.lower() != ".mp4":
+            raise HTTPException(status_code=404, detail="Video file not found")
+
+        file_size = file_path.stat().st_size
+        media_type = mimetypes.guess_type(str(file_path))[0] or "video/mp4"
+        start, end = (
+            _parse_range_header(range_header, file_size)
+            if range_header
+            else (0, file_size - 1)
+        )
+        status_code = 206 if range_header else 200
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(end - start + 1),
+            "Content-Type": media_type,
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+        return StreamingResponse(
+            _file_iterator(str(file_path), start, end),
+            status_code=status_code,
+            media_type=media_type,
+            headers=headers,
+        )
 
     @app.post(
         "/inference_pipelines/video/webrtc-stream",
