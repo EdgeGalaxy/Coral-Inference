@@ -196,6 +196,14 @@ def _extract_command_response(
     return dict(response)
 
 
+def _runtime_deployment_pipeline_id(runtime_deployment: Dict[str, Any]) -> str:
+    return (
+        runtime_deployment.get("current_pipeline_id")
+        or runtime_deployment.get("restore_pipeline_id")
+        or runtime_deployment["pipeline_id"]
+    )
+
+
 def _build_runtime_deployment_response(
     *,
     deployment_id: str,
@@ -294,7 +302,7 @@ async def _get_runtime_deployment_metrics(
     if runtime_deployment is None:
         return {"dates": [], "datasets": []}
 
-    pipeline_id = runtime_deployment["pipeline_id"]
+    pipeline_id = _runtime_deployment_pipeline_id(runtime_deployment)
     if start_time is None or end_time is None:
         end_time = time.time()
         start_time = end_time - (minutes * 60)
@@ -471,7 +479,7 @@ async def _get_runtime_deployment_status(
             phase_message="Runtime deployment is not registered in local cache",
         )
 
-    pipeline_id = runtime_deployment["pipeline_id"]
+    pipeline_id = _runtime_deployment_pipeline_id(runtime_deployment)
     try:
         response = await stream_manager_client.get_status(pipeline_id=pipeline_id)
         response_dict = _extract_command_response(response)
@@ -727,7 +735,7 @@ def register_runtime_package_routes(
     ) -> Dict[str, Any]:
         existing = pipeline_cache.get_runtime_deployment(deployment_id)
         if existing is not None:
-            existing_pipeline_id = existing["pipeline_id"]
+            existing_pipeline_id = _runtime_deployment_pipeline_id(existing)
             try:
                 await stream_manager_client.terminate_pipeline(
                     pipeline_id=existing_pipeline_id
@@ -788,7 +796,7 @@ def register_runtime_package_routes(
         existing = pipeline_cache.get_runtime_deployment(deployment_id)
         existing_pipeline_id = None
         if existing is not None:
-            existing_pipeline_id = existing["pipeline_id"]
+            existing_pipeline_id = _runtime_deployment_pipeline_id(existing)
             try:
                 await stream_manager_client.terminate_pipeline(
                     pipeline_id=existing_pipeline_id
@@ -865,7 +873,7 @@ def register_runtime_package_routes(
                 phase_message="Runtime deployment already stopped",
             )
 
-        pipeline_id = existing["pipeline_id"]
+        pipeline_id = _runtime_deployment_pipeline_id(existing)
         try:
             pipeline_cache.terminate(pipeline_id)
         except Exception:
@@ -939,7 +947,7 @@ def register_runtime_package_routes(
             return _empty_consume_pipeline_response(pipeline_id=None).model_dump()
 
         response = await stream_manager_client.consume_pipeline_result(
-            pipeline_id=runtime_deployment["pipeline_id"],
+            pipeline_id=_runtime_deployment_pipeline_id(runtime_deployment),
             excluded_fields=excluded_fields or [],
         )
         return response.model_dump()
@@ -962,7 +970,7 @@ def register_runtime_package_routes(
                 public_message=f"Runtime deployment {deployment_id} not found"
             )
 
-        pipeline_id = runtime_deployment["pipeline_id"]
+        pipeline_id = _runtime_deployment_pipeline_id(runtime_deployment)
         response = await stream_manager_client.offer(
             pipeline_id=pipeline_id,
             offer_request=request,
@@ -990,7 +998,7 @@ def register_runtime_package_routes(
             )
 
         response = await stream_manager_client.pause_pipeline(
-            pipeline_id=runtime_deployment["pipeline_id"]
+            pipeline_id=_runtime_deployment_pipeline_id(runtime_deployment)
         )
         status_response = await _get_runtime_deployment_status(
             deployment_id=deployment_id,
@@ -1036,7 +1044,7 @@ def register_runtime_package_routes(
             )
 
         response = await stream_manager_client.resume_pipeline(
-            pipeline_id=runtime_deployment["pipeline_id"]
+            pipeline_id=_runtime_deployment_pipeline_id(runtime_deployment)
         )
         status_response = await _get_runtime_deployment_status(
             deployment_id=deployment_id,
@@ -1103,7 +1111,7 @@ def register_runtime_package_routes(
         if runtime_deployment is None:
             return RuntimeDeploymentVideoListResponse(status="success", files=[])
         files = _list_recording_files(
-            pipeline_id=runtime_deployment["pipeline_id"],
+            pipeline_id=_runtime_deployment_pipeline_id(runtime_deployment),
             output_directory=output_directory,
         )
         return RuntimeDeploymentVideoListResponse(status="success", files=files)
@@ -1126,8 +1134,9 @@ def register_runtime_package_routes(
                 public_message=f"Runtime deployment {deployment_id} not found"
             )
         base_url = str(request.base_url).rstrip("/")
+        pipeline_id = _runtime_deployment_pipeline_id(runtime_deployment)
         return {
-            "url": f"{base_url}/mount/pipelines/{runtime_deployment['pipeline_id']}/{output_directory}/{filename}"
+            "url": f"{base_url}/mount/pipelines/{pipeline_id}/{output_directory}/{filename}"
         }
 
     @app.get(
@@ -1150,7 +1159,7 @@ def register_runtime_package_routes(
                 "total_frames": None,
             }
         return await _read_runtime_video_info(
-            pipeline_id=runtime_deployment["pipeline_id"],
+            pipeline_id=_runtime_deployment_pipeline_id(runtime_deployment),
             filename=filename,
             base_url=str(request.base_url),
         )

@@ -102,9 +102,11 @@ class PipelineCache(SQLiteWrapper):
         return list(pipeline_id_mapper.values())
 
     def _decode_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        current_pipeline_id = row[self._col_restore_pipeline_id]
         return {
             "pipeline_id": row[self._col_pipeline_id],
             "restore_pipeline_id": row[self._col_restore_pipeline_id],
+            "current_pipeline_id": current_pipeline_id,
             "payload": json.loads(row[self._col_payload_name]),
             "parameters": json.loads(row[self._col_parameters]),
             "pipeline_name": row[self._col_pipeline_name],
@@ -169,7 +171,9 @@ class PipelineCache(SQLiteWrapper):
                 f"No runtime deployment found with deployment_id={deployment_id} to terminate"
             )
             return None
-        self.terminate(deployment["pipeline_id"])
+        self.terminate(
+            deployment.get("current_pipeline_id") or deployment["pipeline_id"]
+        )
         return deployment
 
     def update_runtime_deployment_parameters(
@@ -224,7 +228,10 @@ class PipelineCache(SQLiteWrapper):
             cursor = connection.cursor()
             rows = self.select(cursor=cursor)
             terminate_rows = [
-                r for r in rows if r[self._col_pipeline_id] == pipeline_id
+                r
+                for r in rows
+                if r[self._col_pipeline_id] == pipeline_id
+                or r[self._col_restore_pipeline_id] == pipeline_id
             ]
 
             if not terminate_rows:
