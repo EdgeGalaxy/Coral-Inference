@@ -1,3 +1,11 @@
+import multiprocessing as mp
+
+try:
+    mp.set_start_method("spawn")
+except RuntimeError:
+    # The start method can only be set once per interpreter.
+    pass
+
 from coral_inference.core.env import apply_runtime_default_backend_env
 
 apply_runtime_default_backend_env()
