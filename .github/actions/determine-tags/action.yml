@@ -38,6 +38,7 @@ runs:
         BRANCH="${{ github.ref_name }}"
         EVENT_NAME="${{ github.event_name }}"
         TARGET_BRANCH="${{ github.event.release.target_commitish }}"
+        COMMIT_ID="${GITHUB_SHA:0:6}"
 
         # Debug information
         echo "=== DEBUG INFORMATION ==="
@@ -48,6 +49,7 @@ runs:
         echo "BRANCH: '$BRANCH'"
         echo "EVENT_NAME: '$EVENT_NAME'"
         echo "TARGET_BRANCH: '$TARGET_BRANCH'"
+        echo "COMMIT_ID: '$COMMIT_ID'"
         echo "=========================="
 
         # Initialize the tags
@@ -108,6 +110,10 @@ runs:
         if [ -z "$IMAGE_TAGS" ]; then
           echo "No tags generated, using version tag as fallback"
           IMAGE_TAGS="$BASE_IMAGE:$VERSION"
+        fi
+
+        if [ -n "$COMMIT_ID" ]; then
+          IMAGE_TAGS="$IMAGE_TAGS,$BASE_IMAGE:$COMMIT_ID"
         fi
 
         # Echo the computed tags
