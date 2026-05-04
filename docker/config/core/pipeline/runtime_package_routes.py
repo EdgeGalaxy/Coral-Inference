@@ -47,6 +47,7 @@ from ..cache import PipelineCache
 from ..monitor.metrics_response_builder import build_metrics_response_from_summary
 from ..pipeline.metadata_utils import resolve_output_image_fields
 from ..routing_utils import get_monitor
+from ..stream.recording_files import list_recording_files
 from ..uptime_buffer import record_segment, flush_to_backend
 
 
@@ -90,30 +91,12 @@ def _get_runtime_recordings_dir(pipeline_id: str, output_directory: str = "recor
     return os.path.join(MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory)
 
 
-def _list_recording_files(pipeline_id: str, output_directory: str = "records") -> List[Dict[str, Any]]:
+def _list_recording_files(
+    pipeline_id: str,
+    output_directory: str = "records",
+) -> List[Dict[str, Any]]:
     base_dir = _get_runtime_recordings_dir(pipeline_id, output_directory)
-    if not os.path.isdir(base_dir):
-        return []
-
-    files: List[Dict[str, Any]] = []
-    for name in os.listdir(base_dir):
-        if not name.lower().endswith(".mp4"):
-            continue
-        file_path = os.path.join(base_dir, name)
-        if not os.path.isfile(file_path):
-            continue
-        stat = os.stat(file_path)
-        files.append(
-            {
-                "filename": name,
-                "size_bytes": stat.st_size,
-                "created_at": int(stat.st_ctime),
-                "modified_at": int(stat.st_mtime),
-            }
-        )
-
-    files.sort(key=lambda item: item["created_at"], reverse=True)
-    return files[1:]
+    return list_recording_files(base_dir)
 
 
 async def _read_runtime_video_info(

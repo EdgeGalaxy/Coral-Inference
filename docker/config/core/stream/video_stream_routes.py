@@ -36,6 +36,7 @@ from loguru import logger
 from inference.core.env import MODEL_CACHE_DIR
 
 from ..cache import PipelineCache
+from .recording_files import list_recording_files
 
 
 class VideoCaptureRequest(BaseModel):
@@ -156,34 +157,13 @@ def register_video_stream_routes(
         output_directory: str = "records",
     ) -> VideoListResponse:
         try:
-            # real_id = _map_pipeline_id(pipeline_id)
             base_dir = os.path.join(
                 MODEL_CACHE_DIR, "pipelines", pipeline_id, output_directory
             )
-            if not os.path.isdir(base_dir):
-                return VideoListResponse(status="success", files=[])
-
-            items: List[VideoFileItem] = []
-            for name in os.listdir(base_dir):
-                if not name.lower().endswith(".mp4"):
-                    continue
-                file_path = os.path.join(base_dir, name)
-                if not os.path.isfile(file_path):
-                    continue
-                stat = os.stat(file_path)
-                items.append(
-                    VideoFileItem(
-                        filename=name,
-                        size_bytes=stat.st_size,
-                        created_at=int(stat.st_ctime),
-                        modified_at=int(stat.st_mtime),
-                    )
-                )
-
-            # 按创建时间倒序
-            items.sort(key=lambda x: x.created_at, reverse=True)
-            # 取从第二个开始，第一个正在写入，无法预览
-            return VideoListResponse(status="success", files=items[1:])
+            items = [
+                VideoFileItem(**item) for item in list_recording_files(base_dir)
+            ]
+            return VideoListResponse(status="success", files=items)
         except Exception as e:
             return VideoListResponse(status="error", error=str(e))
 

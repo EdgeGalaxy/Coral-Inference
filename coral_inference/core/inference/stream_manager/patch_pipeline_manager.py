@@ -1,5 +1,6 @@
 import os
 import time
+from contextlib import suppress
 from functools import partial
 
 import supervision as sv
@@ -230,6 +231,7 @@ def initialise_pipeline(
 
         # 构建 sinks 列表，默认包含 InMemoryBufferSink
         sinks = [buffer_sink.on_prediction]
+        close_handlers = []
 
         video_record_sink_configuration = VideoRecordSinkConfiguration.model_validate(
             parsed_payload.processing_configuration.workflows_parameters.get(
@@ -259,6 +261,7 @@ def initialise_pipeline(
                 queue_size=video_record_sink_configuration.queue_size,
             )
             sinks.append(video_sink.on_prediction)
+            close_handlers.append(video_sink.release)
 
         # 处理 MetricSink（视频指标采集）
         metrics_cfg = parsed_payload.processing_configuration.workflows_parameters.get(
@@ -295,6 +298,7 @@ def initialise_pipeline(
                     queue_size=queue_size,
                 )
                 sinks.append(metric_sink.on_prediction)
+                close_handlers.append(metric_sink.close)
                 logger.info(
                     f"MetricSink attached. fields={selected_fields}, queue_size={queue_size}"
                 )
@@ -302,6 +306,11 @@ def initialise_pipeline(
                 logger.info("MetricSink disabled by config.")
         except Exception as metric_error:
             logger.warning(f"Failed to configure MetricSink: {metric_error}")
+
+        def close_pipeline_sinks() -> None:
+            for close_handler in close_handlers:
+                with suppress(Exception):
+                    close_handler()
 
         # 使用 multi_sink 创建链式 sink
         chained_sink = partial(multi_sink, sinks=sinks)
@@ -336,6 +345,16 @@ def initialise_pipeline(
             decoding_buffer_size=parsed_payload.decoding_buffer_size,
             predictions_queue_size=parsed_payload.predictions_queue_size,
         )
+        original_on_pipeline_end = getattr(
+            self._inference_pipeline, "_on_pipeline_end", None
+        )
+
+        def on_pipeline_end_with_sinks() -> None:
+            close_pipeline_sinks()
+            if original_on_pipeline_end is not None:
+                original_on_pipeline_end()
+
+        self._inference_pipeline._on_pipeline_end = on_pipeline_end_with_sinks
         self._consumption_timeout = parsed_payload.consumption_timeout
         self._last_consume_time = time.monotonic()
         self._inference_pipeline.start(use_main_thread=False)
