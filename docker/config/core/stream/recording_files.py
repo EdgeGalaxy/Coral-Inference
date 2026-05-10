@@ -16,6 +16,8 @@ def list_recording_files(
     for name in os.listdir(base_dir):
         if not name.lower().endswith(".mp4"):
             continue
+        if name.lower().endswith(".temp.mp4"):
+            continue
         file_path = os.path.join(base_dir, name)
         if not os.path.isfile(file_path):
             continue
